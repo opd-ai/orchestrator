@@ -130,8 +130,15 @@ Task:
 
 	resp := callLLM(prompt)
 
+	clean, err := extractJSON(resp)
+	if err != nil {
+		logError("split_failed", task.ID, err.Error())
+		task.Status = "blocked"
+		return
+	}
+
 	var subtasks []Task
-	if err := json.Unmarshal([]byte(resp), &subtasks); err != nil {
+	if err := json.Unmarshal([]byte(clean), &subtasks); err != nil {
 		logError("split_failed", task.ID, err.Error())
 		task.Status = "blocked"
 		return
@@ -283,8 +290,13 @@ Content:
 
 	resp := callLLM(prompt)
 
+	clean, err := extractJSON(resp)
+	if err != nil {
+		logFatal("planner_invalid_json", err.Error())
+	}
+
 	var tasks []Task
-	if err := json.Unmarshal([]byte(resp), &tasks); err != nil {
+	if err := json.Unmarshal([]byte(clean), &tasks); err != nil {
 		logFatal("planner_invalid_json", err.Error())
 	}
 	return tasks
