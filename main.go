@@ -1,67 +1,102 @@
 package main
 
+/*
+Advanced Autonomous Engineering Orchestrator
+
+Features:
+- Document-driven task generation (AUDIT → ROADMAP)
+- Cross-document deduplication
+- DAG-based execution (depends_on)
+- Automatic task splitting on repeated failure
+- Smart repo context detection
+- Git branch isolation
+- Patch validation
+- Structured JSON logging
+- Self-hosted OpenAI-compatible endpoint
+
+Assumptions:
+- Self-hosted endpoint compatible with OpenAI chat API
+- `patch`, `git`, `go` available
+*/
+
 import (
 	"bytes"
+	"crypto/sha1"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
+	"time"
 )
 
 const (
-	modelName     = "local-27b"
-	llmEndpoint   = "http://localhost:11434/v1/chat/completions"
-	maxPatchLines = 50
-	maxRetries    = 5
+	modelName       = "local-27b"
+	llmEndpoint     = "http://localhost:8000/v1/chat/completions"
+	maxPatchLines   = 50
+	maxFilesTouched = 3
+	maxRetries      = 5
+	maxContextFiles = 5
+	logFile         = "orchestrator.log"
+	tasksFile       = "tasks.json"
 )
 
 type Task struct {
 	ID          string   `json:"id"`
 	Description string   `json:"description"`
+	Files       []string `json:"files,omitempty"`
+	DependsOn   []string `json:"depends_on,omitempty"`
 	Status      string   `json:"status"`
-	Files       []string `json:"files"`
 	RetryCount  int      `json:"retry_count"`
+	Hash        string   `json:"hash"`
 }
 
 type TaskFile struct {
-	Goal        string   `json:"goal"`
-	Constraints []string `json:"constraints"`
-	Tasks       []Task   `json:"tasks"`
+	Tasks []Task `json:"tasks"`
+}
+
+type LogEntry struct {
+	Timestamp string `json:"ts"`
+	Level     string `json:"level"`
+	Event     string `json:"event"`
+	TaskID    string `json:"task_id,omitempty"`
+	Message   string `json:"message,omitempty"`
 }
 
 func main() {
+	ensureBranch()
+	ensureTasksFile()
+
 	for {
 		tf := loadTasks()
+		task := nextExecutableTask(&tf)
 
-		if len(tf.Tasks) == 0 {
-			fmt.Println("No tasks found. Running planner...")
-			runPlanner(&tf)
-			saveTasks(tf)
-			continue
-		}
-
-		task := nextPending(&tf)
 		if task == nil {
-			fmt.Println("All tasks complete.")
+			logInfo("run_complete", "", "All tasks complete")
 			return
 		}
 
-		fmt.Println("Running task:", task.ID)
+		logInfo("task_started", task.ID, task.Description)
 
-		diff, err := executeTask(tf, task)
-		if err != nil {
-			fmt.Println("Task execution error:", err)
-			task.Status = "failed"
+		contextFiles := resolveContextFiles(task)
+		context := gatherFileContext(contextFiles)
+
+		diff := executeTask(task, context)
+
+		if err := validatePatch(diff, contextFiles); err != nil {
+			logError("patch_rejected", task.ID, err.Error())
+			markBlocked(task)
 			saveTasks(tf)
 			continue
 		}
 
 		if err := applyPatch(diff); err != nil {
-			fmt.Println("Patch apply failed:", err)
-			task.Status = "failed"
+			logError("patch_apply_failed", task.ID, err.Error())
+			markBlocked(task)
 			saveTasks(tf)
 			continue
 		}
@@ -69,51 +104,325 @@ func main() {
 		buildOut := build()
 
 		if buildOut == "" {
-			fmt.Println("Task complete:", task.ID)
-			gitCommit(task)
-			task.Status = "complete"
+			completeTask(task)
 			saveTasks(tf)
 			continue
 		}
 
-		for i := 0; i < maxRetries; i++ {
-			fmt.Println("Fix attempt", i+1)
-			fixDiff := fixTask(tf, task, buildOut)
+		for task.RetryCount < maxRetries {
+			task.RetryCount++
+			logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-			if err := applyPatch(fixDiff); err != nil {
+			diff = fixTask(task, context, buildOut)
+
+			if err := validatePatch(diff, contextFiles); err != nil {
+				break
+			}
+			if err := applyPatch(diff); err != nil {
 				break
 			}
 
 			buildOut = build()
 			if buildOut == "" {
-				gitCommit(task)
-				task.Status = "complete"
-				break
+				completeTask(task)
+				saveTasks(tf)
+				goto next
 			}
 		}
 
-		if task.Status != "complete" {
-			task.Status = "blocked"
-		}
-
+		logInfo("task_splitting", task.ID, "max retries exceeded")
+		splitTask(&tf, task)
 		saveTasks(tf)
+
+	next:
 	}
 }
 
-func runPlanner(tf *TaskFile) {
-	prompt := fmt.Sprintf("Break this goal into atomic tasks.\nGoal: %s\n", tf.Goal)
+////////////////////////////////////////////////////////////
+// BOOTSTRAP
+////////////////////////////////////////////////////////////
+
+func ensureBranch() {
+	branch := fmt.Sprintf("autonomous/%d", time.Now().Unix())
+	exec.Command("git", "checkout", "-b", branch).Run()
+	logInfo("branch_created", "", branch)
+}
+
+func ensureTasksFile() {
+	if _, err := os.Stat(tasksFile); err == nil {
+		return
+	}
+
+	docOrder := []struct {
+		Name   string
+		Prefix string
+	}{
+		{"AUDIT.md", "A"},
+		{"GAPS.md", "G"},
+		{"GOALS.md", "O"},
+		{"PLAN.md", "P"},
+		{"ROADMAP.md", "R"},
+	}
+
+	var allTasks []Task
+	seen := map[string]bool{}
+
+	for _, doc := range docOrder {
+		if _, err := os.Stat(doc.Name); err != nil {
+			continue
+		}
+
+		data, _ := os.ReadFile(doc.Name)
+		generated := generateTasksFromDoc(doc.Name, string(data))
+
+		for i, t := range generated {
+			hash := hashString(t.Description)
+			if seen[hash] {
+				continue
+			}
+			seen[hash] = true
+
+			t.ID = fmt.Sprintf("%s%d", doc.Prefix, i+1)
+			t.Status = "pending"
+			t.Hash = hash
+			allTasks = append(allTasks, t)
+		}
+	}
+
+	if len(allTasks) == 0 {
+		logFatal("no_documents_found", "No planning documents found")
+	}
+
+	tf := TaskFile{Tasks: allTasks}
+	saveTasks(tf)
+	logInfo("tasks_bootstrap_complete", "", fmt.Sprintf("%d tasks", len(allTasks)))
+}
+
+////////////////////////////////////////////////////////////
+// DAG EXECUTION
+////////////////////////////////////////////////////////////
+
+func nextExecutableTask(tf *TaskFile) *Task {
+	for i := range tf.Tasks {
+		t := &tf.Tasks[i]
+		if t.Status == "pending" && depsSatisfied(tf, t) {
+			t.Status = "in_progress"
+			return t
+		}
+	}
+	return nil
+}
+
+func depsSatisfied(tf *TaskFile, t *Task) bool {
+	for _, dep := range t.DependsOn {
+		if !isComplete(tf, dep) {
+			return false
+		}
+	}
+	return true
+}
+
+func isComplete(tf *TaskFile, id string) bool {
+	for _, t := range tf.Tasks {
+		if t.ID == id {
+			return t.Status == "complete"
+		}
+	}
+	return false
+}
+
+////////////////////////////////////////////////////////////
+// TASK SPLITTING
+////////////////////////////////////////////////////////////
+
+func splitTask(tf *TaskFile, task *Task) {
+	prompt := fmt.Sprintf(`
+Split into smaller atomic tasks.
+Return JSON array only.
+
+Task:
+%s
+`, task.Description)
+
 	resp := callLLM(prompt)
-	json.Unmarshal([]byte(resp), &tf.Tasks)
+
+	var subtasks []Task
+	if err := json.Unmarshal([]byte(resp), &subtasks); err != nil {
+		logError("split_failed", task.ID, err.Error())
+		task.Status = "blocked"
+		return
+	}
+
+	prefix := task.ID + "."
+	for i := range subtasks {
+		subtasks[i].ID = fmt.Sprintf("%s%d", prefix, i+1)
+		subtasks[i].Status = "pending"
+		subtasks[i].DependsOn = task.DependsOn
+	}
+
+	replaceTask(tf, task.ID, subtasks)
 }
 
-func executeTask(tf TaskFile, task *Task) (string, error) {
-	prompt := fmt.Sprintf("Implement task: %s\nReturn unified diff only.", task.Description)
-	return callLLM(prompt), nil
+func replaceTask(tf *TaskFile, id string, newTasks []Task) {
+	var updated []Task
+	for _, t := range tf.Tasks {
+		if t.ID != id {
+			updated = append(updated, t)
+		}
+	}
+	updated = append(updated, newTasks...)
+	tf.Tasks = updated
 }
 
-func fixTask(tf TaskFile, task *Task, errors string) string {
-	prompt := fmt.Sprintf("Fix these errors:\n%s\nReturn unified diff only.", errors)
+////////////////////////////////////////////////////////////
+// EXECUTION
+////////////////////////////////////////////////////////////
+
+func executeTask(task *Task, context string) string {
+	prompt := fmt.Sprintf(`
+Implement task:
+%s
+
+Context:
+%s
+
+Return unified diff only.
+`, task.Description, context)
+
 	return callLLM(prompt)
+}
+
+func fixTask(task *Task, context, errors string) string {
+	prompt := fmt.Sprintf(`
+Fix errors:
+%s
+
+Task:
+%s
+
+Context:
+%s
+
+Return unified diff only.
+`, errors, task.Description, context)
+
+	return callLLM(prompt)
+}
+
+////////////////////////////////////////////////////////////
+// SMART CONTEXT
+////////////////////////////////////////////////////////////
+
+func resolveContextFiles(task *Task) []string {
+	if len(task.Files) > 0 {
+		return task.Files
+	}
+
+	out, _ := exec.Command("git", "ls-files").Output()
+	files := strings.Split(string(out), "\n")
+
+	var matched []string
+	for _, f := range files {
+		if strings.HasSuffix(f, ".go") &&
+			strings.Contains(strings.ToLower(f), keyword(task.Description)) {
+			matched = append(matched, f)
+		}
+		if len(matched) >= maxContextFiles {
+			break
+		}
+	}
+
+	return matched
+}
+
+func keyword(desc string) string {
+	re := regexp.MustCompile(`[a-zA-Z]+`)
+	words := re.FindAllString(desc, -1)
+	if len(words) == 0 {
+		return ""
+	}
+	return strings.ToLower(words[0])
+}
+
+func gatherFileContext(files []string) string {
+	var b strings.Builder
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		b.WriteString("FILE: " + f + "\n")
+		b.Write(data)
+		b.WriteString("\n\n")
+	}
+	return b.String()
+}
+
+////////////////////////////////////////////////////////////
+// PATCH + BUILD
+////////////////////////////////////////////////////////////
+
+func validatePatch(diff string, allowed []string) error {
+	if lineCount(diff) > maxPatchLines {
+		return errors.New("patch too large")
+	}
+
+	files := filesTouched(diff)
+	if len(files) > maxFilesTouched {
+		return errors.New("too many files modified")
+	}
+
+	return nil
+}
+
+func applyPatch(diff string) error {
+	cmd := exec.Command("patch", "-p1")
+	cmd.Stdin = strings.NewReader(diff)
+	return cmd.Run()
+}
+
+func build() string {
+	cmd := exec.Command("sh", "-c", "go build ./... && go test ./...")
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		return string(out)
+	}
+	return ""
+}
+
+func completeTask(task *Task) {
+	gitCommit(task)
+	task.Status = "complete"
+	logInfo("task_complete", task.ID, "")
+}
+
+func markBlocked(task *Task) {
+	task.Status = "blocked"
+}
+
+////////////////////////////////////////////////////////////
+// UTIL
+////////////////////////////////////////////////////////////
+
+func generateTasksFromDoc(docType, content string) []Task {
+	prompt := fmt.Sprintf(`
+Decompose into atomic tasks.
+Return JSON array only.
+
+Document:
+%s
+
+Content:
+%s
+`, docType, content)
+
+	resp := callLLM(prompt)
+
+	var tasks []Task
+	if err := json.Unmarshal([]byte(resp), &tasks); err != nil {
+		logFatal("planner_invalid_json", err.Error())
+	}
+	return tasks
 }
 
 func callLLM(prompt string) string {
@@ -124,11 +433,10 @@ func callLLM(prompt string) string {
 		},
 		"temperature": 0.6,
 	}
-
 	b, _ := json.Marshal(body)
 	resp, err := http.Post(llmEndpoint, "application/json", bytes.NewBuffer(b))
 	if err != nil {
-		panic(err)
+		logFatal("llm_call_failed", err.Error())
 	}
 	defer resp.Body.Close()
 
@@ -146,36 +454,8 @@ func callLLM(prompt string) string {
 	return parsed.Choices[0].Message.Content
 }
 
-func applyPatch(diff string) error {
-	if lineCount(diff) > maxPatchLines {
-		return fmt.Errorf("patch too large")
-	}
-
-	cmd := exec.Command("patch", "-p1")
-	cmd.Stdin = strings.NewReader(diff)
-	return cmd.Run()
-}
-
-func build() string {
-	cmd := exec.Command("sh", "-c", "go build ./... && go test ./...")
-	out, err := cmd.CombinedOutput()
-	if err != nil {
-		return string(out)
-	}
-	return ""
-}
-
-func gitCommit(task *Task) {
-	exec.Command("git", "add", ".").Run()
-	exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run()
-}
-
-func lineCount(s string) int {
-	return len(strings.Split(s, "\n"))
-}
-
 func loadTasks() TaskFile {
-	data, _ := os.ReadFile("tasks.json")
+	data, _ := os.ReadFile(tasksFile)
 	var tf TaskFile
 	json.Unmarshal(data, &tf)
 	return tf
@@ -183,15 +463,61 @@ func loadTasks() TaskFile {
 
 func saveTasks(tf TaskFile) {
 	b, _ := json.MarshalIndent(tf, "", "  ")
-	os.WriteFile("tasks.json", b, 0644)
+	os.WriteFile(tasksFile, b, 0644)
 }
 
-func nextPending(tf *TaskFile) *Task {
-	for i := range tf.Tasks {
-		if tf.Tasks[i].Status == "" || tf.Tasks[i].Status == "pending" {
-			tf.Tasks[i].Status = "in_progress"
-			return &tf.Tasks[i]
+func gitCommit(task *Task) {
+	exec.Command("git", "add", ".").Run()
+	exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run()
+}
+
+func filesTouched(diff string) []string {
+	lines := strings.Split(diff, "\n")
+	set := map[string]bool{}
+	for _, l := range lines {
+		if strings.HasPrefix(l, "+++ b/") {
+			set[strings.TrimPrefix(l, "+++ b/")] = true
 		}
 	}
-	return nil
+	var out []string
+	for k := range set {
+		out = append(out, k)
+	}
+	return out
+}
+
+func lineCount(s string) int {
+	return len(strings.Split(s, "\n"))
+}
+
+func hashString(s string) string {
+	h := sha1.Sum([]byte(strings.ToLower(strings.TrimSpace(s))))
+	return fmt.Sprintf("%x", h)
+}
+
+////////////////////////////////////////////////////////////
+// LOGGING
+////////////////////////////////////////////////////////////
+
+func logInfo(event, taskID, msg string)  { log("INFO", event, taskID, msg) }
+func logError(event, taskID, msg string) { log("ERROR", event, taskID, msg) }
+
+func logFatal(event, msg string) {
+	log("FATAL", event, "", msg)
+	os.Exit(1)
+}
+
+func log(level, event, taskID, msg string) {
+	entry := LogEntry{
+		Timestamp: time.Now().UTC().Format(time.RFC3339),
+		Level:     level,
+		Event:     event,
+		TaskID:    taskID,
+		Message:   msg,
+	}
+	b, _ := json.Marshal(entry)
+
+	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	defer f.Close()
+	f.Write(append(b, '\n'))
 }
