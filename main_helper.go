@@ -30,7 +30,7 @@ var (
 
 const (
 	defaultModel    = "local-27b"
-	defaultEndpoint = "http://localhost:8000/v1/chat/completions"
+	defaultEndpoint = "http://localhost:11434/v1/chat/completions"
 	logFile         = "orchestrator.log"
 	tasksFile       = "tasks.json"
 	maxContextFiles = 5
