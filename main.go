@@ -9,12 +9,11 @@ import (
 	"os"
 	"os/exec"
 	"strings"
-	"time"
 )
 
 const (
 	modelName     = "local-27b"
-	llmEndpoint   = "http://localhost:8000/v1/chat/completions"
+	llmEndpoint   = "http://localhost:11434/v1/chat/completions"
 	maxPatchLines = 50
 	maxRetries    = 5
 )
