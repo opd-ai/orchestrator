@@ -23,7 +23,6 @@ import (
 	"bytes"
 	"crypto/sha1"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,122 +30,7 @@ import (
 	"os/exec"
 	"regexp"
 	"strings"
-	"time"
 )
-
-const (
-	modelName       = "local-27b"
-	llmEndpoint     = "http://localhost:8000/v1/chat/completions"
-	maxPatchLines   = 50
-	maxFilesTouched = 3
-	maxRetries      = 5
-	maxContextFiles = 5
-	logFile         = "orchestrator.log"
-	tasksFile       = "tasks.json"
-)
-
-type Task struct {
-	ID          string   `json:"id"`
-	Description string   `json:"description"`
-	Files       []string `json:"files,omitempty"`
-	DependsOn   []string `json:"depends_on,omitempty"`
-	Status      string   `json:"status"`
-	RetryCount  int      `json:"retry_count"`
-	Hash        string   `json:"hash"`
-}
-
-type TaskFile struct {
-	Tasks []Task `json:"tasks"`
-}
-
-type LogEntry struct {
-	Timestamp string `json:"ts"`
-	Level     string `json:"level"`
-	Event     string `json:"event"`
-	TaskID    string `json:"task_id,omitempty"`
-	Message   string `json:"message,omitempty"`
-}
-
-func main() {
-	ensureBranch()
-	ensureTasksFile()
-
-	for {
-		tf := loadTasks()
-		task := nextExecutableTask(&tf)
-
-		if task == nil {
-			logInfo("run_complete", "", "All tasks complete")
-			return
-		}
-
-		logInfo("task_started", task.ID, task.Description)
-
-		contextFiles := resolveContextFiles(task)
-		context := gatherFileContext(contextFiles)
-
-		diff := executeTask(task, context)
-
-		if err := validatePatch(diff, contextFiles); err != nil {
-			logError("patch_rejected", task.ID, err.Error())
-			markBlocked(task)
-			saveTasks(tf)
-			continue
-		}
-
-		if err := applyPatch(diff); err != nil {
-			logError("patch_apply_failed", task.ID, err.Error())
-			markBlocked(task)
-			saveTasks(tf)
-			continue
-		}
-
-		buildOut := build()
-
-		if buildOut == "" {
-			completeTask(task)
-			saveTasks(tf)
-			continue
-		}
-
-		for task.RetryCount < maxRetries {
-			task.RetryCount++
-			logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
-
-			diff = fixTask(task, context, buildOut)
-
-			if err := validatePatch(diff, contextFiles); err != nil {
-				break
-			}
-			if err := applyPatch(diff); err != nil {
-				break
-			}
-
-			buildOut = build()
-			if buildOut == "" {
-				completeTask(task)
-				saveTasks(tf)
-				goto next
-			}
-		}
-
-		logInfo("task_splitting", task.ID, "max retries exceeded")
-		splitTask(&tf, task)
-		saveTasks(tf)
-
-	next:
-	}
-}
-
-////////////////////////////////////////////////////////////
-// BOOTSTRAP
-////////////////////////////////////////////////////////////
-
-func ensureBranch() {
-	branch := fmt.Sprintf("autonomous/%d", time.Now().Unix())
-	exec.Command("git", "checkout", "-b", branch).Run()
-	logInfo("branch_created", "", branch)
-}
 
 func ensureTasksFile() {
 	if _, err := os.Stat(tasksFile); err == nil {
@@ -362,19 +246,6 @@ func gatherFileContext(files []string) string {
 // PATCH + BUILD
 ////////////////////////////////////////////////////////////
 
-func validatePatch(diff string, allowed []string) error {
-	if lineCount(diff) > maxPatchLines {
-		return errors.New("patch too large")
-	}
-
-	files := filesTouched(diff)
-	if len(files) > maxFilesTouched {
-		return errors.New("too many files modified")
-	}
-
-	return nil
-}
-
 func applyPatch(diff string) error {
 	cmd := exec.Command("patch", "-p1")
 	cmd.Stdin = strings.NewReader(diff)
@@ -388,12 +259,6 @@ func build() string {
 		return string(out)
 	}
 	return ""
-}
-
-func completeTask(task *Task) {
-	gitCommit(task)
-	task.Status = "complete"
-	logInfo("task_complete", task.ID, "")
 }
 
 func markBlocked(task *Task) {
@@ -499,25 +364,7 @@ func hashString(s string) string {
 // LOGGING
 ////////////////////////////////////////////////////////////
 
-func logInfo(event, taskID, msg string)  { log("INFO", event, taskID, msg) }
-func logError(event, taskID, msg string) { log("ERROR", event, taskID, msg) }
-
 func logFatal(event, msg string) {
 	log("FATAL", event, "", msg)
 	os.Exit(1)
-}
-
-func log(level, event, taskID, msg string) {
-	entry := LogEntry{
-		Timestamp: time.Now().UTC().Format(time.RFC3339),
-		Level:     level,
-		Event:     event,
-		TaskID:    taskID,
-		Message:   msg,
-	}
-	b, _ := json.Marshal(entry)
-
-	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	defer f.Close()
-	f.Write(append(b, '\n'))
 }
