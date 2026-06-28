@@ -241,7 +241,7 @@ func log(level, event, taskID, msg string) {
 		fmt.Println(string(b))
 	}
 
-	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	defer f.Close()
 	f.Write(append(b, '\n'))
 }

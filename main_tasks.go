@@ -69,6 +69,16 @@ Context:
 
 Return unified diff only.
 `, task.Description, context)
+	prompt += fmt.Sprintf(`
+
+IMPORTANT CONSTRAINTS:
+- Modify ONLY what is strictly necessary.
+- Do NOT refactor unrelated code.
+- Keep the patch minimal and atomic.
+- Keep patch under %d lines.
+- Follow strict unified diff format.
+- Do not include markdown fences.
+`, allowedPatchLines(task))
 
 	return callLLM(prompt)
 }
@@ -86,6 +96,13 @@ Context:
 
 Return unified diff only.
 `, errors, task.Description, context)
+	prompt += fmt.Sprintf(`
 
+Return a corrected unified diff.
+Keep patch under %d lines.
+Do not rewrite large blocks.
+`,
+		allowedPatchLines(task),
+	)
 	return callLLM(prompt)
 }

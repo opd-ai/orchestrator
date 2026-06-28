@@ -255,7 +255,7 @@ func loadTasks() TaskFile {
 
 func saveTasks(tf TaskFile) {
 	b, _ := json.MarshalIndent(tf, "", "  ")
-	os.WriteFile(tasksFile, b, 0644)
+	os.WriteFile(tasksFile, b, 0o644)
 }
 
 func gitCommit(task *Task) {
