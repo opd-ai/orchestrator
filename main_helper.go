@@ -14,18 +14,24 @@ import (
 ////////////////////////////////////////////////////////////
 
 var (
+	// Execution flags
 	modelName       string
 	llmEndpoint     string
 	maxRetries      int
 	maxPatchLines   int
 	maxFilesTouched int
-	refactorMode    bool
 	maxRuntime      time.Duration
 	maxTasks        int
 	resumeBranch    bool
 	dryRun          bool
 	verbose         bool
 	selfEvolve      bool
+
+	// Audit flags
+	auditMode    bool
+	auditPattern string
+	auditPass    string
+	auditOutput  string
 )
 
 const (
@@ -72,7 +78,6 @@ func parseFlags() {
 	flag.IntVar(&maxRetries, "max-retries", 5, "Maximum retries per task")
 	flag.IntVar(&maxPatchLines, "max-patch-lines", 50, "Maximum allowed patch size")
 	flag.IntVar(&maxFilesTouched, "max-files", 3, "Maximum files touched per patch")
-	flag.BoolVar(&refactorMode, "refactor", false, "Enable refactor mode")
 	flag.DurationVar(&maxRuntime, "max-runtime", 0, "Maximum runtime (e.g., 2h, 30m)")
 	flag.IntVar(&maxTasks, "max-tasks", 0, "Maximum tasks per run")
 	flag.BoolVar(&resumeBranch, "resume", false, "Resume current branch")
@@ -88,10 +93,6 @@ func parseFlags() {
 	}
 
 	flag.Parse()
-
-	if refactorMode {
-		maxPatchLines = 120
-	}
 }
 
 ////////////////////////////////////////////////////////////
