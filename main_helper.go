@@ -2,11 +2,11 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 	"time"
 )
 
@@ -26,6 +26,7 @@ var (
 	resumeBranch    bool
 	dryRun          bool
 	verbose         bool
+	selfEvolve      bool
 )
 
 const (
@@ -104,7 +105,22 @@ func main() {
 
 		diff := executeTask(task, context)
 
-		if err := validatePatch(diff, contextFiles); err != nil {
+		if err := validatePatch(diff, contextFiles, task); err != nil {
+
+			if strings.Contains(err.Error(), "too large") {
+				logInfo("patch_too_large_retrying", task.ID, err.Error())
+				task.RetryCount++
+
+				if task.RetryCount < maxRetries {
+					continue
+				}
+
+				logInfo("splitting_due_to_size", task.ID, "")
+				splitTask(&tf, task)
+				saveTasks(tf)
+				continue
+			}
+
 			logError("patch_rejected", task.ID, err.Error())
 			markBlocked(task)
 			saveTasks(tf)
@@ -134,7 +150,7 @@ func main() {
 
 			diff = fixTask(task, context, buildOut)
 
-			if err := validatePatch(diff, contextFiles); err != nil {
+			if err := validatePatch(diff, contextFiles, task); err != nil {
 				break
 			}
 
@@ -176,6 +192,7 @@ func parseFlags() {
 	flag.BoolVar(&resumeBranch, "resume", false, "Resume current branch")
 	flag.BoolVar(&dryRun, "dry-run", false, "Do not apply patches or commit")
 	flag.BoolVar(&verbose, "verbose", false, "Print logs to stdout")
+	flag.BoolVar(&selfEvolve, "self-evolve", false, "Enable elevated mutation limits for orchestrator self-improvement")
 
 	flag.Usage = func() {
 		fmt.Println("Autonomous Engineering Orchestrator")
@@ -200,16 +217,6 @@ func ensureBranch() {
 	branch := fmt.Sprintf("autonomous/%d", time.Now().Unix())
 	exec.Command("git", "checkout", "-b", branch).Run()
 	logInfo("branch_created", "", branch)
-}
-
-func validatePatch(diff string, allowed []string) error {
-	if lineCount(diff) > maxPatchLines {
-		return errors.New("patch too large")
-	}
-	if len(filesTouched(diff)) > maxFilesTouched {
-		return errors.New("too many files modified")
-	}
-	return nil
 }
 
 func completeTask(task *Task) {
