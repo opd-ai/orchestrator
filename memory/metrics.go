@@ -31,10 +31,10 @@ func UpdateMetrics(summary RunSummary) error {
 		return err
 	}
 
-	m, _ := LoadMetrics()
-	m = mergeSummaryMetrics(m, summary)
+	metrics, _ := LoadMetrics()
+	updatedMetrics := mergeSummaryMetrics(metrics, summary)
 
-	if err := SaveMetrics(m); err != nil {
+	if err := SaveMetrics(updatedMetrics); err != nil {
 		return err
 	}
 

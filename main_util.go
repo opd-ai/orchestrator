@@ -28,17 +28,7 @@ func mostModifiedFile(files map[string]int) string {
 	bestCount := 0
 
 	for file, count := range files {
-		if count > bestCount {
-			best = file
-			bestCount = count
-			continue
-		}
-
-		if count == bestCount && count > 0 {
-			candidates := []string{best, file}
-			slices.Sort(candidates)
-			best = candidates[0]
-		}
+		best, bestCount = pickHigherCount(best, bestCount, file, count)
 	}
 
 	return best
@@ -49,17 +39,7 @@ func mostCommonFailure(failures map[string]int) string {
 	bestCount := 0
 
 	for failure, count := range failures {
-		if count > bestCount {
-			best = failure
-			bestCount = count
-			continue
-		}
-
-		if count == bestCount && count > 0 {
-			candidates := []string{best, failure}
-			slices.Sort(candidates)
-			best = candidates[0]
-		}
+		best, bestCount = pickHigherCount(best, bestCount, failure, count)
 	}
 
 	return best
@@ -92,6 +72,18 @@ func classifyBuildFailure(buildOut string) string {
 	}
 
 	return ""
+}
+
+func pickHigherCount(current string, currentCount int, candidate string, candidateCount int) (string, int) {
+	if candidateCount > currentCount {
+		return candidate, candidateCount
+	}
+	if candidateCount == currentCount && candidateCount > 0 {
+		candidates := []string{current, candidate}
+		slices.Sort(candidates)
+		return candidates[0], currentCount
+	}
+	return current, currentCount
 }
 
 func exitOnErr(err error) {
