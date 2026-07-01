@@ -1,7 +1,9 @@
 package main
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/opd-ai/orchestrator/audit"
@@ -13,8 +15,14 @@ import (
 // the caller can mark the task blocked.
 func checkPostPatchInvariants(diff string, touchedFiles []string, task *Task) error {
 	reg, err := audit.LoadInvariantRegistry()
-	if err != nil || reg == nil {
-		return nil // invariant file absent — skip silently
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil // invariant file absent — skip silently
+		}
+		return fmt.Errorf("loading invariant registry: %w", err)
+	}
+	if reg == nil {
+		return nil
 	}
 
 	var violations []audit.InvariantViolation

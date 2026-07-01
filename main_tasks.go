@@ -177,7 +177,7 @@ Context:
 
 Return unified diff only.
 `, executionBlock("FIX", task, constraints, hints), task.Description, context)
-	return callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(executorModelName))
+	return callLLMWithModel(promptWithMemory(prompt), 0.6, activeExecutorModel())
 }
 
 func executionBlock(mode string, task *Task, constraints []string, failReason string) string {

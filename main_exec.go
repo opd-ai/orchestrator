@@ -100,15 +100,16 @@ func execute() executionStats {
 		}
 
 		tf := loadTasks()
-		mergeClusteredTasks(&tf)
-		saveTasks(tf)
+		if mergeClusteredTasks(&tf) {
+			saveTasks(tf)
+		}
 		task := nextExecutableTask(&tf)
 		if task == nil {
 			logInfo("run_complete", "", "All tasks complete")
 			logSubsystemStats(stats.subsystems)
 			return stats
 		}
-		if enforceTaskGranularity(&tf, task) {
+		if task.MergedCount <= 1 && enforceTaskGranularity(&tf, task) {
 			logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
 			saveTasks(tf)
 			continue

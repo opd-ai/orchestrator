@@ -212,3 +212,16 @@
 {"ts":"2026-07-01T22:07:19Z","level":"INFO","event":"patch_risk","message":"risk=0.45 level=medium deletion=0.50 centrality=1.00 retry=0.00 api=0.00"}
 {"ts":"2026-07-01T22:07:19Z","level":"INFO","event":"patch_confidence","message":"score=0.49 entropy=1.00 deletion_ratio=0.17 structural_churn=0.00"}
 {"ts":"2026-07-01T22:07:19Z","level":"INFO","event":"patch_risk","message":"risk=0.38 level=medium deletion=0.17 centrality=1.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"retry_convergence_alert","task_id":"R1","message":"retry 2 repeated failure \"undefined symbol\""}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=0.31 entropy=1.00 deletion_ratio=0.50 structural_churn=0.35"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.45 level=medium deletion=0.50 centrality=1.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=0.46 entropy=1.00 deletion_ratio=0.25 structural_churn=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.40 level=medium deletion=0.25 centrality=1.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=0.32 entropy=1.00 deletion_ratio=0.67 structural_churn=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.48 level=medium deletion=0.67 centrality=1.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=1.00 entropy=0.00 deletion_ratio=0.00 structural_churn=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.00 level=low deletion=0.00 centrality=0.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=0.38 entropy=1.00 deletion_ratio=0.50 structural_churn=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.45 level=medium deletion=0.50 centrality=1.00 retry=0.00 api=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_confidence","message":"score=0.49 entropy=1.00 deletion_ratio=0.17 structural_churn=0.00"}
+{"ts":"2026-07-01T23:06:55Z","level":"INFO","event":"patch_risk","message":"risk=0.38 level=medium deletion=0.17 centrality=1.00 retry=0.00 api=0.00"}

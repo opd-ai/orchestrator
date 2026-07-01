@@ -161,6 +161,10 @@ func isMergeSafe(a, b *Task) bool {
 	if len(combinedFiles) > maxFilesTouched+fileCapBonus() {
 		return false
 	}
+	combinedDesc := a.Description + "\n" + b.Description
+	if len(combinedDesc) > oversizedTaskDescriptionLimit {
+		return false
+	}
 	return true
 }
 

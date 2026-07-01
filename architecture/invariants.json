@@ -26,7 +26,7 @@
     },
     {
       "name": "patch_cap",
-      "description": "No single patch may exceed 50 lines",
+      "description": "Base patch budget is 50 lines; tier, subsystem stability, and merge-count multipliers may raise this above 50",
       "max_value": 50
     }
   ]

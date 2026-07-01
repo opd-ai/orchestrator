@@ -230,7 +230,7 @@ func callLLM(prompt string) string {
 
 // callLLMWithTemp calls the LLM endpoint with the executor model and given temperature.
 func callLLMWithTemp(prompt string, temperature float64) string {
-	return callLLMWithModel(prompt, temperature, roleModel(executorModelName))
+	return callLLMWithModel(prompt, temperature, activeExecutorModel())
 }
 
 // callLLMWithModel calls the LLM endpoint with explicit model and temperature,
@@ -272,6 +272,9 @@ func callLLMWithModel(prompt string, temperature float64, model string) string {
 		"model=%s prompt=%d completion=%d total=%d",
 		model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens, parsed.Usage.TotalTokens,
 	))
+	if len(parsed.Choices) == 0 {
+		logFatal("llm_empty_response", "no choices in LLM response")
+	}
 	return parsed.Choices[0].Message.Content
 }
 

@@ -25,11 +25,8 @@ func shouldTriggerStrategicReview(task *Task, stats *executionStats) bool {
 	if activeTier >= Tier2Architectural && stats.stability.SafeMode {
 		return true
 	}
-	if apiSurfaceScore("") == 0 {
-		// Approximate: check task description for API-surface keywords
-		if containsAPIKeyword(task.Description) {
-			return true
-		}
+	if containsAPIKeyword(task.Description) {
+		return true
 	}
 	if stats.stability.oscillationCount >= 5 {
 		return true
@@ -76,11 +73,15 @@ func resolveExpandedFiles(task *Task, capFiles int) []string {
 	}
 
 	// Supplement with keyword-matched files from git ls-files.
+	kw := keyword(task.Description)
+	if kw == "" {
+		return files
+	}
 	for _, f := range allGoFiles() {
 		if seen[f] {
 			continue
 		}
-		if contains(toLower(f), keyword(task.Description)) {
+		if contains(toLower(f), kw) {
 			seen[f] = true
 			files = append(files, f)
 		}
