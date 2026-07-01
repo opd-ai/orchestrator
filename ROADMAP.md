@@ -101,21 +101,21 @@ Move planning intelligence into Go code.
 
 Completion Checklist:
 
-[ ] Implement AST-based impact analyzer
+[x] Implement AST-based impact analyzer
     - parse Go files
     - extract function boundaries
     - extract struct definitions
     - build symbol map
 
-[ ] Implement symbol-level task generator
+[x] Implement symbol-level task generator
     - add function
     - modify struct
     - update method
     - adjust imports
 
-[ ] Build deterministic dependency DAG
+[x] Build deterministic dependency DAG
 
-[ ] Restrict model context to function-level scope when possible
+[x] Restrict model context to function-level scope when possible
 
 Success Criteria:
 - Smaller prompts
