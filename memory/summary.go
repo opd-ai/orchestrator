@@ -8,24 +8,33 @@ func SummarizeForPlanner() string {
 		return ""
 	}
 
-	return fmt.Sprintf(`
+	s := fmt.Sprintf(`
 Recent adaptive metrics from prior runs:
 - Average successful patch size: %.1f lines
 - Average retries per task: %.2f
 - Most problematic file: %s
-- Most common failure: %s
-
-Guidance:
-- Prefer atomic changes near %.0f lines.
-- Avoid repeated modification of %s unless necessary.
-- Watch for recurring %s failures.
 `,
 		m.AvgSuccessPatchSize,
 		m.AvgRetryCount,
 		m.MostProblematicFile,
-		m.MostCommonFailure,
+	)
+
+	if m.MostCommonFailure != "" {
+		s += fmt.Sprintf("- Most common failure: %s\n", m.MostCommonFailure)
+	}
+
+	s += fmt.Sprintf(`
+Guidance:
+- Prefer atomic changes near %.0f lines.
+- Avoid repeated modification of %s unless necessary.
+`,
 		m.AvgSuccessPatchSize,
 		m.MostProblematicFile,
-		m.MostCommonFailure,
 	)
+
+	if m.MostCommonFailure != "" {
+		s += fmt.Sprintf("- Watch for recurring %s failures.\n", m.MostCommonFailure)
+	}
+
+	return s
 }

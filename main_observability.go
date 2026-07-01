@@ -47,11 +47,11 @@ func writeRunSummary(summary memory.RunSummary) {
 
 func writeArtifact(path, content string) {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		logError("artifact_write_failed", "", err.Error())
+		logError("artifact_mkdir_failed", path, err.Error())
 		return
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
-		logError("artifact_write_failed", "", err.Error())
+		logError("artifact_write_failed", path, err.Error())
 	}
 }
