@@ -18,6 +18,7 @@ type RunSummary struct {
 	TasksBlocked            int            `json:"tasks_blocked"`
 	AvgRetries              float64        `json:"avg_retries"`
 	LargestPatch            int            `json:"largest_patch"`
+	HighRiskPatches         int            `json:"high_risk_patches,omitempty"`
 	MostModifiedFile        string         `json:"most_modified_file"`
 	MostCommonFailure       string         `json:"most_common_failure"`
 	RetryConvergenceSamples int            `json:"retry_convergence_samples"`

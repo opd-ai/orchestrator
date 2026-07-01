@@ -14,11 +14,13 @@ type executionStats struct {
 	tasksBlocked       int
 	totalRetries       int
 	largestPatch       int
+	highRiskPatches    int
 	modifiedFiles      map[string]int
 	failurePatterns    map[string]int
 	convergenceSamples int
 	convergenceAlerts  int
 	stability          stabilityMonitor
+	subsystems         map[string]*subsystemMetrics
 }
 
 func runExecutionMode() {
@@ -43,6 +45,7 @@ func runExecutionMode() {
 		TasksBlocked:            stats.tasksBlocked,
 		AvgRetries:              averageRetries(stats.totalRetries, stats.tasksTotal),
 		LargestPatch:            stats.largestPatch,
+		HighRiskPatches:         stats.highRiskPatches,
 		MostModifiedFile:        mostModifiedFile(stats.modifiedFiles),
 		MostCommonFailure:       mostCommonFailure(stats.failurePatterns),
 		RetryConvergenceSamples: stats.convergenceSamples,
@@ -73,6 +76,7 @@ func execute() executionStats {
 	stats := executionStats{
 		modifiedFiles:   make(map[string]int),
 		failurePatterns: make(map[string]int),
+		subsystems:      make(map[string]*subsystemMetrics),
 	}
 	taskCache := loadTaskCache()
 
@@ -85,18 +89,25 @@ func execute() executionStats {
 	for {
 		if maxRuntime > 0 && time.Since(start) > maxRuntime {
 			logInfo("max_runtime_reached", "", "")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
 
 		if maxTasks > 0 && taskCounter >= maxTasks {
 			logInfo("max_tasks_reached", "", "")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
 
 		tf := loadTasks()
+		if mergeClusteredTasks(&tf) {
+			saveTasks(tf)
+			continue
+		}
 		task := nextExecutableTask(&tf)
 		if task == nil {
 			logInfo("run_complete", "", "All tasks complete")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
 		if enforceTaskGranularity(&tf, task) {
@@ -108,6 +119,9 @@ func execute() executionStats {
 		taskCounter++
 		stats.tasksTotal++
 		logInfo("task_started", task.ID, task.Description)
+
+		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
+		maybeEscalateTier(task, &stats)  // check escalation triggers for this task
 
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
@@ -142,6 +156,7 @@ func execute() executionStats {
 			markBlocked(task)
 			stats.tasksBlocked++
 			stats.stability.recordBlock()
+			recordSubsystemOutcome(stats.subsystems, task, false)
 			saveTasks(tf)
 			continue
 		}
@@ -152,6 +167,16 @@ func execute() executionStats {
 				markBlocked(task)
 				stats.tasksBlocked++
 				stats.stability.recordBlock()
+				recordSubsystemOutcome(stats.subsystems, task, false)
+				saveTasks(tf)
+				continue
+			}
+			if err := checkPostPatchInvariants(diff, filesTouched(diff), task); err != nil {
+				logError("invariant_block", task.ID, err.Error())
+				markBlocked(task)
+				stats.tasksBlocked++
+				stats.stability.recordBlock()
+				recordSubsystemOutcome(stats.subsystems, task, false)
 				saveTasks(tf)
 				continue
 			}
@@ -163,6 +188,7 @@ func execute() executionStats {
 			completeTask(task)
 			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
+			recordSubsystemOutcome(stats.subsystems, task, true)
 			cacheTaskResult(taskCache, task, diff)
 			saveTaskCache(taskCache)
 			saveTasks(tf)
@@ -263,6 +289,10 @@ func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	s.largestPatch = max(s.largestPatch, patchSize)
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
+	}
+	r := scorePatchRisk(diff, task)
+	if r.level >= RiskHigh {
+		s.highRiskPatches++
 	}
 	computeReward(task.ID, task.RetryCount, patchSize)
 	s.stability.recordSuccess()

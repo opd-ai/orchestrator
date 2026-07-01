@@ -49,6 +49,15 @@ func allowedPatchLines(task *Task) int {
 		base = 150
 	}
 
+	// Apply tier guardrail: scale base by active intelligence tier multiplier.
+	base = lineLimit(int(float64(base) * patchCapMultiplier()))
+
+	// Merged tasks earn proportionally larger patch budgets (capped at 2×).
+	if task.MergedCount > 1 {
+		factor := min(task.MergedCount, 2)
+		base = lineLimit(base * factor)
+	}
+
 	// Adaptive escalation by retry count
 	switch task.RetryCount {
 	case 0:

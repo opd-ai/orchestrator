@@ -296,24 +296,24 @@ Introduce controlled sophistication tiers.
 
 Completion Checklist:
 
-[ ] Define Intelligence Tiers:
+[x] Define Intelligence Tiers:
     - Tier 0: deterministic micro-edit (default)
     - Tier 1: coordinated multi-file edit
     - Tier 2: architectural planning mode
     - Tier 3: experimental speculative mode (opt-in)
 
-[ ] Implement escalation triggers:
+[x] Implement escalation triggers:
     - retry threshold exceeded
     - high centrality file touched
     - public interface modification detected
     - repeated subsystem instability
 
-[ ] Implement escalation guardrails
+[x] Implement escalation guardrails
     - hard patch caps
     - invariant validation required
     - successful build mandatory
 
-[ ] Implement automatic de-escalation logic
+[x] Implement automatic de-escalation logic
 
 Success Criteria:
 - Default execution remains simple
@@ -328,20 +328,20 @@ Score patch risk before mutation.
 
 Completion Checklist:
 
-[ ] Define risk factors
+[x] Define risk factors
     - deletion ratio
     - file modification percentage
     - file centrality
     - retry count
     - API surface modification
 
-[ ] Implement weighted risk scoring function
+[x] Implement weighted risk scoring function
 
-[ ] Define risk thresholds (low / medium / high)
+[x] Define risk thresholds (low / medium / high)
 
-[ ] Enforce risk-based gating
+[x] Enforce risk-based gating
 
-[ ] Log risk metrics in memory branch
+[x] Log risk metrics in memory branch
 
 Success Criteria:
 - Reduced destabilizing patches
@@ -356,18 +356,18 @@ Enable subsystem-aware coordination.
 
 Completion Checklist:
 
-[ ] Build subsystem map
+[x] Build subsystem map
     - directory clusters
     - symbol reference graph
     - interface dependency map
 
-[ ] Detect clustered tasks
+[x] Detect clustered tasks
 
-[ ] Merge related micro-tasks when safe
+[x] Merge related micro-tasks when safe
 
-[ ] Respect patch caps after merge
+[x] Respect patch caps after merge
 
-[ ] Track subsystem stability metrics
+[x] Track subsystem stability metrics
 
 Success Criteria:
 - Cleaner subsystem-level changes
@@ -382,17 +382,17 @@ Allow sophistication without structural decay.
 
 Completion Checklist:
 
-[ ] Define invariants
+[x] Define invariants
     - no cyclic dependencies
     - no global mutable state
     - max function length
     - max file length
 
-[ ] Implement pre-execution invariant validator
+[x] Implement pre-execution invariant validator
 
-[ ] Implement post-patch invariant check
+[x] Implement post-patch invariant check
 
-[ ] Block patches violating invariants
+[x] Block patches violating invariants
 
 Success Criteria:
 - Architectural stability preserved

@@ -62,6 +62,7 @@ type Task struct {
 	RetryCount  int        `json:"retry_count"`
 	Hash        string     `json:"hash"`
 	ChangeType  ChangeType `json:"change_type,omitempty"`
+	MergedCount int        `json:"merged_count,omitempty"`
 }
 
 type TaskFile struct {

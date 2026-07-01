@@ -174,6 +174,12 @@ func applyPatch(diff string) error {
 	return cmd.Run()
 }
 
+func revertPatch(diff string) error {
+	cmd := exec.Command("patch", "-p1", "-R")
+	cmd.Stdin = strings.NewReader(diff)
+	return cmd.Run()
+}
+
 func build() string {
 	cmd := exec.Command("sh", "-c", "go build ./... && go test ./...")
 	out, err := cmd.CombinedOutput()

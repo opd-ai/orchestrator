@@ -15,6 +15,7 @@ func validatePatch(diff string, allowedFiles []string, task *Task) error {
 	touchedFiles := filesTouched(diff)
 	steps := []func() error{
 		func() error { return validateTransformOnly(task) },
+		func() error { return validatePatchRisk(diff, task) },
 		func() error { return validatePatchSize(diff, task) },
 		func() error { return validateTouchedFiles(touchedFiles, allowedFiles, task) },
 		func() error { return validatePatchShape(diff, task) },
@@ -64,7 +65,7 @@ func validatePatchSize(diff string, task *Task) error {
 }
 
 func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error {
-	if len(touchedFiles) > maxFilesTouched {
+	if len(touchedFiles) > maxFilesTouched+fileCapBonus() {
 		return errors.New("too many files modified")
 	}
 	if len(task.Files) == 0 {
