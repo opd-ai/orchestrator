@@ -218,6 +218,8 @@ Content:
 }
 
 func callLLM(prompt string) string {
+	prompt = enforceTokenBudget(prompt)
+
 	body := map[string]interface{}{
 		"model": modelName,
 		"messages": []map[string]string{

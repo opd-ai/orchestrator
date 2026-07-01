@@ -30,29 +30,29 @@ Eliminate avoidable model failures and reduce retries.
 
 Completion Checklist:
 
-[ ] Implement compile error classifier
+[x] Implement compile error classifier
     - undefined symbol
     - unused import
     - missing import
     - redeclaration
     - type mismatch
 
-[ ] Generate structured fix hints instead of raw compiler output
+[x] Generate structured fix hints instead of raw compiler output
 
-[ ] Implement automatic trivial fix engine
+[x] Implement automatic trivial fix engine
     - remove unused imports
     - normalize import blocks
     - auto-run go fmt
     - fix obvious missing imports
 
-[ ] Implement strict patch shape validator
+[x] Implement strict patch shape validator
     - reject >30% file deletions
     - reject full file rewrites
     - reject unexpected renames
     - enforce file-touch limits
     - enforce line delta caps
 
-[ ] Implement deterministic task granularity enforcer
+[x] Implement deterministic task granularity enforcer
     - split oversized tasks
     - split multi-file tasks pre-execution
 
@@ -70,7 +70,7 @@ Replace prose prompts with compact execution protocol.
 
 Completion Checklist:
 
-[ ] Define structured execution block format
+[x] Define structured execution block format
     - MODE: PLAN | EXECUTE | FIX | ARCH_PLAN
     - TASK_ID
     - FILES_ALLOWED
@@ -78,14 +78,14 @@ Completion Checklist:
     - CONSTRAINTS
     - FAIL_REASON (optional)
 
-[ ] Implement prompt compression layer
+[x] Implement prompt compression layer
     - remove verbose prose
     - remove redundant instructions
     - cap token usage aggressively
 
-[ ] Inject compressed adaptive memory summary (≤10 lines)
+[x] Inject compressed adaptive memory summary (≤10 lines)
 
-[ ] Enforce token budget per call
+[x] Enforce token budget per call
 
 Success Criteria:
 - Lower token usage
