@@ -474,16 +474,16 @@ Adaptive mutation pressure per subsystem.
 
 Completion Checklist:
 
-[ ] Track per-subsystem metrics
+[x] Track per-subsystem metrics
     - retry rate
     - risk score average
     - patch size average
 
-[ ] Detect unstable subsystems
+[x] Detect unstable subsystems
 
-[ ] Reduce patch budget in unstable areas
+[x] Reduce patch budget in unstable areas
 
-[ ] Increase budget in stable areas
+[x] Increase budget in stable areas
 
 Success Criteria:
 - Stabilization over long sessions
@@ -498,15 +498,15 @@ Allow bounded architectural reasoning bursts.
 
 Completion Checklist:
 
-[ ] Define strategic review trigger conditions
+[x] Define strategic review trigger conditions
 
-[ ] Expand context temporarily (bounded)
+[x] Expand context temporarily (bounded)
 
-[ ] Require invariant validation post-review
+[x] Require invariant validation post-review
 
-[ ] Require successful build before acceptance
+[x] Require successful build before acceptance
 
-[ ] Automatically return to Tier 0 after completion
+[x] Automatically return to Tier 0 after completion
 
 Success Criteria:
 - Controlled architectural correction

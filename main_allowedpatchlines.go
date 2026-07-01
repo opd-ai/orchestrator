@@ -43,20 +43,10 @@ func adaptivePatchBase(defaultBase int) int {
 
 func allowedPatchLines(task *Task) int {
 	base := adaptivePatchBase(maxPatchLines)
-
-	// Elevated mode for orchestrator self-modification
 	if selfEvolve && strings.Contains(strings.ToLower(task.Description), "orchestrator") && base < 150 {
 		base = 150
 	}
-
-	// Apply tier guardrail: scale base by active intelligence tier multiplier.
-	base = lineLimit(int(float64(base) * patchCapMultiplier()))
-
-	// Merged tasks earn proportionally larger patch budgets (capped at 2×).
-	if task.MergedCount > 1 {
-		factor := min(task.MergedCount, 2)
-		base = lineLimit(base * factor)
-	}
+	base = applyScalingFactors(base, task)
 
 	// Adaptive escalation by retry count
 	switch task.RetryCount {
@@ -69,4 +59,15 @@ func allowedPatchLines(task *Task) int {
 	default:
 		return lineLimit(int(float64(base) * 2.5))
 	}
+}
+
+// applyScalingFactors applies tier, subsystem stability, and merge-count
+// multipliers to the base patch budget.
+func applyScalingFactors(base int, task *Task) int {
+	base = lineLimit(int(float64(base) * patchCapMultiplier()))
+	base = lineLimit(int(float64(base) * subsystemBudgetMultiplier(taskSubsystem(task))))
+	if task.MergedCount > 1 {
+		base = lineLimit(base * min(task.MergedCount, 2))
+	}
+	return base
 }

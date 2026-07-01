@@ -6,11 +6,76 @@ import (
 	"strings"
 )
 
-// subsystemMetrics tracks success and failure counts for one subsystem.
+// subsystemMetrics tracks stability metrics for one subsystem across the session.
 type subsystemMetrics struct {
-	subsystem string
-	successes int
-	failures  int
+	subsystem    string
+	successes    int
+	failures     int
+	totalRetries int
+	totalRisk    float64
+	totalSize    int
+	patchCount   int
+}
+
+// failureRate returns the fraction of attempts that failed, or 0 when no data.
+func (m *subsystemMetrics) failureRate() float64 {
+	total := m.successes + m.failures
+	if total == 0 {
+		return 0
+	}
+	return float64(m.failures) / float64(total)
+}
+
+// avgRiskScore returns the mean risk score across recorded patches.
+func (m *subsystemMetrics) avgRiskScore() float64 {
+	if m.patchCount == 0 {
+		return 0
+	}
+	return m.totalRisk / float64(m.patchCount)
+}
+
+// avgPatchSize returns the mean patch line count.
+func (m *subsystemMetrics) avgPatchSize() float64 {
+	if m.patchCount == 0 {
+		return 0
+	}
+	return float64(m.totalSize) / float64(m.patchCount)
+}
+
+// isUnstable returns true when the subsystem shows a pattern of repeated failures.
+// Requires at least 3 attempts and a failure rate above 40 %.
+func (m *subsystemMetrics) isUnstable() bool {
+	return m.successes+m.failures >= 3 && m.failureRate() > 0.40
+}
+
+// isStable returns true when the subsystem has a strong success history.
+// Requires at least 5 successes and a failure rate below 20 %.
+func (m *subsystemMetrics) isStable() bool {
+	return m.successes >= 5 && m.failureRate() < 0.20
+}
+
+// subsystemRegistry holds per-subsystem metrics for the current session.
+// It is populated by recordSubsystemOutcome and consulted by subsystemBudgetMultiplier.
+var subsystemRegistry = make(map[string]*subsystemMetrics)
+
+// subsystemBudgetMultiplier returns an adaptive patch-budget multiplier for the
+// given subsystem based on its recorded stability:
+//   - Unstable subsystems get a 0.70× reduction to limit mutation pressure.
+//   - Stable subsystems get a 1.20× increase to reward consistent success.
+//   - All others get 1.0× (no change).
+func subsystemBudgetMultiplier(subsystem string) float64 {
+	m, ok := subsystemRegistry[subsystem]
+	if !ok {
+		return 1.0
+	}
+	switch {
+	case m.isUnstable():
+		return 0.70
+	case m.isStable():
+		return 1.20
+	default:
+		return 1.0
+	}
 }
 
 // taskSubsystem derives the subsystem name from a task's file list.
@@ -129,17 +194,39 @@ func unionFiles(a, b []string) []string {
 	return out
 }
 
-// recordSubsystemOutcome increments success or failure counts for the task's
-// subsystem in the provided metrics map.
+// recordSubsystemOutcome updates the session-level subsystem registry with the
+// outcome (success or failure) of a task, including retry count, risk score,
+// and patch size for richer analytics.
 func recordSubsystemOutcome(metrics map[string]*subsystemMetrics, task *Task, success bool) {
 	sub := taskSubsystem(task)
-	if _, ok := metrics[sub]; !ok {
-		metrics[sub] = &subsystemMetrics{subsystem: sub}
+	ensureSubsystemEntry(metrics, sub)
+	ensureSubsystemEntry(subsystemRegistry, sub)
+
+	update := func(m *subsystemMetrics) {
+		m.totalRetries += task.RetryCount
+		if success {
+			m.successes++
+		} else {
+			m.failures++
+		}
 	}
-	if success {
-		metrics[sub].successes++
-	} else {
-		metrics[sub].failures++
+	update(metrics[sub])
+	update(subsystemRegistry[sub])
+}
+
+// recordSubsystemPatchMetrics records risk and patch size for a completed patch.
+func recordSubsystemPatchMetrics(task *Task, diff string) {
+	sub := taskSubsystem(task)
+	ensureSubsystemEntry(subsystemRegistry, sub)
+	m := subsystemRegistry[sub]
+	m.patchCount++
+	m.totalRisk += scorePatchRisk(diff, task).score
+	m.totalSize += lineCount(diff)
+}
+
+func ensureSubsystemEntry(m map[string]*subsystemMetrics, sub string) {
+	if _, ok := m[sub]; !ok {
+		m[sub] = &subsystemMetrics{subsystem: sub}
 	}
 }
 
@@ -150,7 +237,12 @@ func logSubsystemStats(metrics map[string]*subsystemMetrics) {
 		if total == 0 {
 			continue
 		}
-		logInfo("subsystem_stability", sub,
-			fmt.Sprintf("successes=%d failures=%d total=%d", m.successes, m.failures, total))
+		logInfo("subsystem_stability", sub, fmt.Sprintf(
+			"successes=%d failures=%d retries=%d avg_risk=%.2f avg_size=%.0f stable=%v unstable=%v",
+			m.successes, m.failures, m.totalRetries,
+			m.avgRiskScore(), m.avgPatchSize(),
+			m.isStable(), m.isUnstable(),
+		))
 	}
 }
+

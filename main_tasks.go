@@ -124,13 +124,19 @@ func splitOversizedDescription(task *Task) []Task {
 
 func executeTask(task *Task, context string) string {
 	prompt := promptWithMemory(buildExecPrompt(task, context))
-	if speculativeMode {
+	return dispatchExecution(task, context, prompt)
+}
+
+// dispatchExecution selects the appropriate execution path based on active mode and tier.
+func dispatchExecution(task *Task, context, prompt string) string {
+	switch {
+	case speculativeMode:
 		return speculativeExecute(task, context)
-	}
-	if activeTier >= Tier2Architectural {
+	case activeTier >= Tier2Architectural:
 		return strategyCompete(task, prompt)
+	default:
+		return callLLMWithModel(prompt, 0.6, activeExecutorModel())
 	}
-	return callLLMWithModel(prompt, 0.6, activeExecutorModel())
 }
 
 func buildExecPrompt(task *Task, context string) string {
@@ -182,16 +188,20 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	b.WriteString("FILES_ALLOWED: " + strings.Join(task.Files, ",") + "\n")
 	b.WriteString(fmt.Sprintf("MAX_PATCH_LINES: %d\n", allowedPatchLines(task)))
 	b.WriteString(fmt.Sprintf("MAX_FILE_PATCH_LINES: %d\n", perFileLineDeltaCap(task)))
+	writeOptionalFields(&b, task, constraints, failReason)
+	return strings.TrimSpace(b.String())
+}
+
+func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, failReason string) {
 	if task.ChangeType != "" {
 		b.WriteString("CHANGE_TYPE: " + string(task.ChangeType) + "\n")
 	}
 	b.WriteString("CONSTRAINTS:\n")
-	for _, constraint := range constraints {
-		b.WriteString("- " + constraint + "\n")
+	for _, c := range constraints {
+		b.WriteString("- " + c + "\n")
 	}
 	if failReason != "" {
 		b.WriteString("FAIL_REASON:\n")
 		b.WriteString(failReason + "\n")
 	}
-	return strings.TrimSpace(b.String())
 }

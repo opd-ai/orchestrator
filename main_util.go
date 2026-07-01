@@ -156,3 +156,18 @@ func roleModel(roleVar string) string {
 	}
 	return modelName
 }
+
+// allGoFiles returns all tracked Go source files in the repository.
+func allGoFiles() []string {
+	out, err := exec.Command("git", "ls-files").Output()
+	if err != nil {
+		return nil
+	}
+	var result []string
+	for _, f := range strings.Split(string(out), "\n") {
+		if strings.HasSuffix(f, ".go") {
+			result = append(result, f)
+		}
+	}
+	return result
+}

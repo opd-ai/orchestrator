@@ -100,10 +100,8 @@ func execute() executionStats {
 		}
 
 		tf := loadTasks()
-		if mergeClusteredTasks(&tf) {
-			saveTasks(tf)
-			continue
-		}
+		mergeClusteredTasks(&tf)
+		saveTasks(tf)
 		task := nextExecutableTask(&tf)
 		if task == nil {
 			logInfo("run_complete", "", "All tasks complete")
@@ -122,20 +120,14 @@ func execute() executionStats {
 
 		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
 		deescalateModel(task.ID)         // revert escalated model from previous task
+		deescalateReviewMode()           // reset strategic review flag
 		maybeEscalateTier(task, &stats)  // check tier escalation triggers for this task
 		taskRisk := scorePatchRisk("", task)
 		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
 
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
-
-		// Use cached diff if available to avoid an unnecessary LLM call.
-		diff := cachedDiff(taskCache, task)
-		if diff == "" {
-			diff = executeTask(task, context)
-		} else {
-			logInfo("task_cache_hit", task.ID, "using cached diff")
-		}
+		diff := getDiffForTask(task, context, taskCache, &stats)
 
 		if err := validatePatch(diff, contextFiles, task); err != nil {
 			writeRejectedPatch(task.ID, diff)
@@ -165,17 +157,8 @@ func execute() executionStats {
 		}
 
 		if !dryRun {
-			if err := applyPatch(diff); err != nil {
+			if err := applyDiffToWorkspace(diff, task); err != nil {
 				logError("patch_apply_failed", task.ID, err.Error())
-				markBlocked(task)
-				stats.tasksBlocked++
-				stats.stability.recordBlock()
-				recordSubsystemOutcome(stats.subsystems, task, false)
-				saveTasks(tf)
-				continue
-			}
-			if err := checkPostPatchInvariants(diff, filesTouched(diff), task); err != nil {
-				logError("invariant_block", task.ID, err.Error())
 				markBlocked(task)
 				stats.tasksBlocked++
 				stats.stability.recordBlock()
@@ -192,6 +175,7 @@ func execute() executionStats {
 			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
 			recordSubsystemOutcome(stats.subsystems, task, true)
+			recordSubsystemPatchMetrics(task, diff)
 			cacheTaskResult(taskCache, task, diff)
 			saveTaskCache(taskCache)
 			saveTasks(tf)
@@ -199,6 +183,28 @@ func execute() executionStats {
 		}
 		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
 	}
+}
+
+// getDiffForTask returns the diff for a task, using the cache when available
+// and falling back to strategic review or normal execution.
+func getDiffForTask(task *Task, context string, taskCache map[string]string, stats *executionStats) string {
+	if cached := cachedDiff(taskCache, task); cached != "" {
+		logInfo("task_cache_hit", task.ID, "using cached diff")
+		return cached
+	}
+	if shouldTriggerStrategicReview(task, stats) {
+		return executeInReviewMode(task, stats)
+	}
+	return executeTask(task, context)
+}
+
+// applyDiffToWorkspace applies a diff to the working tree and then validates
+// post-patch architectural invariants, reverting on violation.
+func applyDiffToWorkspace(diff string, task *Task) error {
+	if err := applyPatch(diff); err != nil {
+		return err
+	}
+	return checkPostPatchInvariants(diff, filesTouched(diff), task)
 }
 
 func resolveBuildFailure(
@@ -293,12 +299,15 @@ func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
 	}
-	r := scorePatchRisk(diff, task)
-	if r.level >= RiskHigh {
-		s.highRiskPatches++
-	}
+	s.trackHighRisk(diff, task)
 	computeReward(task.ID, task.RetryCount, patchSize)
 	s.stability.recordSuccess()
+}
+
+func (s *executionStats) trackHighRisk(diff string, task *Task) {
+	if scorePatchRisk(diff, task).level >= RiskHigh {
+		s.highRiskPatches++
+	}
 }
 
 func (s *executionStats) recordBuildFailure(buildOut string) {
