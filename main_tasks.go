@@ -179,6 +179,9 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	b.WriteString("FILES_ALLOWED: " + strings.Join(task.Files, ",") + "\n")
 	b.WriteString(fmt.Sprintf("MAX_PATCH_LINES: %d\n", allowedPatchLines(task)))
 	b.WriteString(fmt.Sprintf("MAX_FILE_PATCH_LINES: %d\n", perFileLineDeltaCap(task)))
+	if task.ChangeType != "" {
+		b.WriteString("CHANGE_TYPE: " + string(task.ChangeType) + "\n")
+	}
 	b.WriteString("CONSTRAINTS:\n")
 	for _, constraint := range constraints {
 		b.WriteString("- " + constraint + "\n")

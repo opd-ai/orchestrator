@@ -239,14 +239,14 @@ Turn model into transformation engine.
 
 Completion Checklist:
 
-[ ] Define execution DSL
+[x] Define execution DSL
     EXECUTE { file, change_type, max_lines }
 
-[ ] Implement schema validator
+[x] Implement schema validator
 
-[ ] Enforce transformation-only mode
+[x] Enforce transformation-only mode
 
-[ ] Reject malformed execution instructions
+[x] Reject malformed execution instructions
 
 Success Criteria:
 - Predictable diffs
