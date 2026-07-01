@@ -41,11 +41,24 @@ func runExecutionMode() {
 		LargestPatch:      stats.largestPatch,
 		MostModifiedFile:  mostModifiedFile(stats.modifiedFiles),
 		MostCommonFailure: mostCommonFailure(stats.failurePatterns),
+		FailurePatterns:   copyCounts(stats.failurePatterns),
+		ModifiedFiles:     copyCounts(stats.modifiedFiles),
 	}
 
 	memory.SaveRun(summary)
 	memory.UpdateMetrics(summary)
 	writeRunSummary(summary)
+}
+
+func copyCounts(in map[string]int) map[string]int {
+	if len(in) == 0 {
+		return nil
+	}
+	out := make(map[string]int, len(in))
+	for key, value := range in {
+		out[key] = value
+	}
+	return out
 }
 
 func execute() executionStats {

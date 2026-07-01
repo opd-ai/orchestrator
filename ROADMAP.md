@@ -135,7 +135,7 @@ Completion Checklist:
     - derive from avg_success_patch_size
     - clamp within safe bounds
 
-[ ] Implement failure pattern compression
+[x] Implement failure pattern compression
     - track top N failure types
     - track problematic files
 
