@@ -131,7 +131,7 @@ Self-tuning behavior via structured memory.
 
 Completion Checklist:
 
-[ ] Implement dynamic patch budget controller
+[x] Implement dynamic patch budget controller
     - derive from avg_success_patch_size
     - clamp within safe bounds
 
