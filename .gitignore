@@ -32,3 +32,4 @@ go.work.sum
 # .vscode/
 /orchestrator
 /tmp
+task_cache.json

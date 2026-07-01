@@ -25,7 +25,7 @@ Task:
 %s
 `, task.Description)
 
-	resp := callLLM(promptWithMemory(prompt))
+	resp := callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(architectModelName))
 
 	clean, err := extractJSON(resp)
 	if err != nil {
@@ -123,6 +123,23 @@ func splitOversizedDescription(task *Task) []Task {
 ////////////////////////////////////////////////////////////
 
 func executeTask(task *Task, context string) string {
+	prompt := promptWithMemory(buildExecPrompt(task, context))
+	return dispatchExecution(task, context, prompt)
+}
+
+// dispatchExecution selects the appropriate execution path based on active mode and tier.
+func dispatchExecution(task *Task, context, prompt string) string {
+	switch {
+	case speculativeMode:
+		return speculativeExecute(task, context)
+	case activeTier >= Tier2Architectural:
+		return strategyCompete(task, prompt)
+	default:
+		return callLLMWithModel(prompt, 0.6, activeExecutorModel())
+	}
+}
+
+func buildExecPrompt(task *Task, context string) string {
 	constraints := []string{
 		"Modify only what is strictly necessary",
 		"Do not refactor unrelated code",
@@ -130,7 +147,7 @@ func executeTask(task *Task, context string) string {
 		"Follow strict unified diff format",
 		"Do not include markdown fences",
 	}
-	prompt := fmt.Sprintf(`
+	return fmt.Sprintf(`
 %s
 
 Task:
@@ -141,8 +158,6 @@ Context:
 
 Return unified diff only.
 `, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
-
-	return callLLM(promptWithMemory(prompt))
 }
 
 func fixTask(task *Task, context, hints string) string {
@@ -162,7 +177,7 @@ Context:
 
 Return unified diff only.
 `, executionBlock("FIX", task, constraints, hints), task.Description, context)
-	return callLLM(promptWithMemory(prompt))
+	return callLLMWithModel(promptWithMemory(prompt), 0.6, activeExecutorModel())
 }
 
 func executionBlock(mode string, task *Task, constraints []string, failReason string) string {
@@ -173,13 +188,20 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	b.WriteString("FILES_ALLOWED: " + strings.Join(task.Files, ",") + "\n")
 	b.WriteString(fmt.Sprintf("MAX_PATCH_LINES: %d\n", allowedPatchLines(task)))
 	b.WriteString(fmt.Sprintf("MAX_FILE_PATCH_LINES: %d\n", perFileLineDeltaCap(task)))
+	writeOptionalFields(&b, task, constraints, failReason)
+	return strings.TrimSpace(b.String())
+}
+
+func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, failReason string) {
+	if task.ChangeType != "" {
+		b.WriteString("CHANGE_TYPE: " + string(task.ChangeType) + "\n")
+	}
 	b.WriteString("CONSTRAINTS:\n")
-	for _, constraint := range constraints {
-		b.WriteString("- " + constraint + "\n")
+	for _, c := range constraints {
+		b.WriteString("- " + c + "\n")
 	}
 	if failReason != "" {
 		b.WriteString("FAIL_REASON:\n")
 		b.WriteString(failReason + "\n")
 	}
-	return strings.TrimSpace(b.String())
 }

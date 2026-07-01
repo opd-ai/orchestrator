@@ -160,19 +160,19 @@ Trade cores for reliability.
 
 Completion Checklist:
 
-[ ] Implement multi-branch speculative execution
+[x] Implement multi-branch speculative execution
 
-[ ] Evaluate branches using:
+[x] Evaluate branches using:
     - build success
     - risk score
     - diff entropy
     - retry count
 
-[ ] Implement temperature strategy controller
+[x] Implement temperature strategy controller
     - low-temp first pass
     - moderate-temp fallback
 
-[ ] Ensure concurrency-safe execution manager
+[x] Ensure concurrency-safe execution manager
 
 Success Criteria:
 - Higher complex-task success
@@ -188,16 +188,16 @@ Reduce inference burden aggressively.
 
 Completion Checklist:
 
-[ ] Enforce hard prompt token budget
+[x] Enforce hard prompt token budget
 
-[ ] Implement task hash caching
+[x] Implement task hash caching
 
-[ ] Support model role specialization
+[x] Support model role specialization
     --planner-model
     --executor-model
     --architect-model
 
-[ ] Log token usage metrics
+[x] Log token usage metrics
 
 Success Criteria:
 - Reduced inference frequency
@@ -213,17 +213,17 @@ Make codebase easier for quantized models.
 
 Completion Checklist:
 
-[ ] Implement complexity audit tool
+[x] Implement complexity audit tool
     - track function length
     - track file growth
     - basic cyclomatic complexity
 
-[ ] Implement dead code detection
+[x] Implement dead code detection
 
-[ ] Implement invariant registry
+[x] Implement invariant registry
     architecture/invariants.json
 
-[ ] Inject compressed invariant summary into prompts
+[x] Inject compressed invariant summary into prompts
 
 Success Criteria:
 - Reduced structural complexity
@@ -239,14 +239,14 @@ Turn model into transformation engine.
 
 Completion Checklist:
 
-[ ] Define execution DSL
+[x] Define execution DSL
     EXECUTE { file, change_type, max_lines }
 
-[ ] Implement schema validator
+[x] Implement schema validator
 
-[ ] Enforce transformation-only mode
+[x] Enforce transformation-only mode
 
-[ ] Reject malformed execution instructions
+[x] Reject malformed execution instructions
 
 Success Criteria:
 - Predictable diffs
@@ -262,17 +262,17 @@ Self-optimizing execution under consumer hardware constraints.
 
 Completion Checklist:
 
-[ ] Implement reward scoring engine
+[x] Implement reward scoring engine
     - retries
     - patch size
     - build speed
 
-[ ] Implement hardware-aware scheduler
+[x] Implement hardware-aware scheduler
     - monitor CPU load
     - adjust parallelism
     - adjust patch limits
 
-[ ] Implement long-run stability monitor
+[x] Implement long-run stability monitor
     - detect oscillation
     - detect regressions
     - trigger safe mode
@@ -296,24 +296,24 @@ Introduce controlled sophistication tiers.
 
 Completion Checklist:
 
-[ ] Define Intelligence Tiers:
+[x] Define Intelligence Tiers:
     - Tier 0: deterministic micro-edit (default)
     - Tier 1: coordinated multi-file edit
     - Tier 2: architectural planning mode
     - Tier 3: experimental speculative mode (opt-in)
 
-[ ] Implement escalation triggers:
+[x] Implement escalation triggers:
     - retry threshold exceeded
     - high centrality file touched
     - public interface modification detected
     - repeated subsystem instability
 
-[ ] Implement escalation guardrails
+[x] Implement escalation guardrails
     - hard patch caps
     - invariant validation required
     - successful build mandatory
 
-[ ] Implement automatic de-escalation logic
+[x] Implement automatic de-escalation logic
 
 Success Criteria:
 - Default execution remains simple
@@ -328,20 +328,20 @@ Score patch risk before mutation.
 
 Completion Checklist:
 
-[ ] Define risk factors
+[x] Define risk factors
     - deletion ratio
     - file modification percentage
     - file centrality
     - retry count
     - API surface modification
 
-[ ] Implement weighted risk scoring function
+[x] Implement weighted risk scoring function
 
-[ ] Define risk thresholds (low / medium / high)
+[x] Define risk thresholds (low / medium / high)
 
-[ ] Enforce risk-based gating
+[x] Enforce risk-based gating
 
-[ ] Log risk metrics in memory branch
+[x] Log risk metrics in memory branch
 
 Success Criteria:
 - Reduced destabilizing patches
@@ -356,18 +356,18 @@ Enable subsystem-aware coordination.
 
 Completion Checklist:
 
-[ ] Build subsystem map
+[x] Build subsystem map
     - directory clusters
     - symbol reference graph
     - interface dependency map
 
-[ ] Detect clustered tasks
+[x] Detect clustered tasks
 
-[ ] Merge related micro-tasks when safe
+[x] Merge related micro-tasks when safe
 
-[ ] Respect patch caps after merge
+[x] Respect patch caps after merge
 
-[ ] Track subsystem stability metrics
+[x] Track subsystem stability metrics
 
 Success Criteria:
 - Cleaner subsystem-level changes
@@ -382,17 +382,17 @@ Allow sophistication without structural decay.
 
 Completion Checklist:
 
-[ ] Define invariants
+[x] Define invariants
     - no cyclic dependencies
     - no global mutable state
     - max function length
     - max file length
 
-[ ] Implement pre-execution invariant validator
+[x] Implement pre-execution invariant validator
 
-[ ] Implement post-patch invariant check
+[x] Implement post-patch invariant check
 
-[ ] Block patches violating invariants
+[x] Block patches violating invariants
 
 Success Criteria:
 - Architectural stability preserved
@@ -407,17 +407,17 @@ Use CPU parallelism to approximate deeper reasoning.
 
 Completion Checklist:
 
-[ ] Implement multi-strategy branch generation
+[x] Implement multi-strategy branch generation
 
-[ ] Allow alternative design strategies
+[x] Allow alternative design strategies
 
-[ ] Evaluate strategies using:
+[x] Evaluate strategies using:
     - build success
     - risk score
     - diff entropy
     - complexity delta
 
-[ ] Prune losing branches automatically
+[x] Prune losing branches automatically
 
 Success Criteria:
 - Higher success for ambiguous architectural tasks
@@ -432,13 +432,13 @@ Escalate model size only when required.
 
 Completion Checklist:
 
-[ ] Implement model escalation conditions
+[x] Implement model escalation conditions
 
-[ ] Add cooldown period between escalations
+[x] Add cooldown period between escalations
 
-[ ] Log escalation events
+[x] Log escalation events
 
-[ ] Automatically revert to smaller model after completion
+[x] Automatically revert to smaller model after completion
 
 Success Criteria:
 - Low average compute cost
@@ -453,13 +453,13 @@ Catch structural failures before disk write.
 
 Completion Checklist:
 
-[ ] Implement in-memory patch application
+[x] Implement in-memory patch application
 
-[ ] Run AST validation in memory
+[x] Run AST validation in memory
 
-[ ] Detect syntax and type failures pre-build
+[x] Detect syntax and type failures pre-build
 
-[ ] Reject invalid patches before file write
+[x] Reject invalid patches before file write
 
 Success Criteria:
 - Fewer build failures
@@ -474,16 +474,16 @@ Adaptive mutation pressure per subsystem.
 
 Completion Checklist:
 
-[ ] Track per-subsystem metrics
+[x] Track per-subsystem metrics
     - retry rate
     - risk score average
     - patch size average
 
-[ ] Detect unstable subsystems
+[x] Detect unstable subsystems
 
-[ ] Reduce patch budget in unstable areas
+[x] Reduce patch budget in unstable areas
 
-[ ] Increase budget in stable areas
+[x] Increase budget in stable areas
 
 Success Criteria:
 - Stabilization over long sessions
@@ -498,15 +498,15 @@ Allow bounded architectural reasoning bursts.
 
 Completion Checklist:
 
-[ ] Define strategic review trigger conditions
+[x] Define strategic review trigger conditions
 
-[ ] Expand context temporarily (bounded)
+[x] Expand context temporarily (bounded)
 
-[ ] Require invariant validation post-review
+[x] Require invariant validation post-review
 
-[ ] Require successful build before acceptance
+[x] Require successful build before acceptance
 
-[ ] Automatically return to Tier 0 after completion
+[x] Automatically return to Tier 0 after completion
 
 Success Criteria:
 - Controlled architectural correction

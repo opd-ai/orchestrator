@@ -14,12 +14,24 @@ func validatePatch(diff string, allowedFiles []string, task *Task) error {
 
 	touchedFiles := filesTouched(diff)
 	steps := []func() error{
+		func() error { return validateTransformOnly(task) },
+		func() error { return validatePatchRisk(diff, task) },
 		func() error { return validatePatchSize(diff, task) },
 		func() error { return validateTouchedFiles(touchedFiles, allowedFiles, task) },
 		func() error { return validatePatchShape(diff, task) },
 		func() error { return validateDeletionRatio(diff) },
+		func() error { return validateDSLSchema(diff, task.ChangeType) },
+		func() error { return validateSimulation(diff, touchedFiles, task) },
 	}
 	return runValidationSteps(steps)
+}
+
+// validateTransformOnly rejects tasks that lack a ChangeType when --transform-only is set.
+func validateTransformOnly(task *Task) error {
+	if transformOnly && task.ChangeType == "" {
+		return errors.New("transform-only mode requires task.change_type to be set")
+	}
+	return nil
 }
 
 func deletionRatio(diff string) float64 {
@@ -54,7 +66,7 @@ func validatePatchSize(diff string, task *Task) error {
 }
 
 func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error {
-	if len(touchedFiles) > maxFilesTouched {
+	if len(touchedFiles) > maxFilesTouched+fileCapBonus() {
 		return errors.New("too many files modified")
 	}
 	if len(task.Files) == 0 {

@@ -147,3 +147,27 @@ func exitOnErr(err error) {
 		os.Exit(1)
 	}
 }
+
+// roleModel returns roleVar if it is non-empty, otherwise falls back to modelName.
+// Used to implement model role specialization (--planner-model, --executor-model, etc.).
+func roleModel(roleVar string) string {
+	if roleVar != "" {
+		return roleVar
+	}
+	return modelName
+}
+
+// allGoFiles returns all tracked Go source files in the repository.
+func allGoFiles() []string {
+	out, err := exec.Command("git", "ls-files").Output()
+	if err != nil {
+		return nil
+	}
+	var result []string
+	for _, f := range strings.Split(string(out), "\n") {
+		if strings.HasSuffix(f, ".go") {
+			result = append(result, f)
+		}
+	}
+	return result
+}

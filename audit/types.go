@@ -39,6 +39,7 @@ type AuditContext struct {
 	Imports        []string
 	Hotspots       []Hotspot
 	CallDensity    map[string]int
+	DeadFunctions  []string
 }
 
 type Finding struct {

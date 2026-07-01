@@ -14,10 +14,13 @@ type executionStats struct {
 	tasksBlocked       int
 	totalRetries       int
 	largestPatch       int
+	highRiskPatches    int
 	modifiedFiles      map[string]int
 	failurePatterns    map[string]int
 	convergenceSamples int
 	convergenceAlerts  int
+	stability          stabilityMonitor
+	subsystems         map[string]*subsystemMetrics
 }
 
 func runExecutionMode() {
@@ -26,6 +29,7 @@ func runExecutionMode() {
 	// Inject memory into planner
 	memoryContext := memory.SummarizeForPlanner()
 	injectMemoryIntoPlanner(memoryContext)
+	injectInvariantSummary()
 
 	fmt.Println("Execution mode started.")
 	fmt.Println("Model:", modelName)
@@ -41,6 +45,7 @@ func runExecutionMode() {
 		TasksBlocked:            stats.tasksBlocked,
 		AvgRetries:              averageRetries(stats.totalRetries, stats.tasksTotal),
 		LargestPatch:            stats.largestPatch,
+		HighRiskPatches:         stats.highRiskPatches,
 		MostModifiedFile:        mostModifiedFile(stats.modifiedFiles),
 		MostCommonFailure:       mostCommonFailure(stats.failurePatterns),
 		RetryConvergenceSamples: stats.convergenceSamples,
@@ -71,7 +76,9 @@ func execute() executionStats {
 	stats := executionStats{
 		modifiedFiles:   make(map[string]int),
 		failurePatterns: make(map[string]int),
+		subsystems:      make(map[string]*subsystemMetrics),
 	}
+	taskCache := loadTaskCache()
 
 	if !resumeBranch {
 		ensureBranch()
@@ -82,21 +89,27 @@ func execute() executionStats {
 	for {
 		if maxRuntime > 0 && time.Since(start) > maxRuntime {
 			logInfo("max_runtime_reached", "", "")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
 
 		if maxTasks > 0 && taskCounter >= maxTasks {
 			logInfo("max_tasks_reached", "", "")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
 
 		tf := loadTasks()
+		if mergeClusteredTasks(&tf) {
+			saveTasks(tf)
+		}
 		task := nextExecutableTask(&tf)
 		if task == nil {
 			logInfo("run_complete", "", "All tasks complete")
+			logSubsystemStats(stats.subsystems)
 			return stats
 		}
-		if enforceTaskGranularity(&tf, task) {
+		if task.MergedCount <= 1 && enforceTaskGranularity(&tf, task) {
 			logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
 			saveTasks(tf)
 			continue
@@ -106,10 +119,16 @@ func execute() executionStats {
 		stats.tasksTotal++
 		logInfo("task_started", task.ID, task.Description)
 
+		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
+		deescalateModel(task.ID)         // revert escalated model from previous task
+		deescalateReviewMode()           // reset strategic review flag
+		maybeEscalateTier(task, &stats)  // check tier escalation triggers for this task
+		taskRisk := scorePatchRisk("", task)
+		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
+
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
-
-		diff := executeTask(task, context)
+		diff := getDiffForTask(task, context, taskCache, &stats)
 
 		if err := validatePatch(diff, contextFiles, task); err != nil {
 			writeRejectedPatch(task.ID, diff)
@@ -132,15 +151,19 @@ func execute() executionStats {
 			logError("patch_rejected", task.ID, err.Error())
 			markBlocked(task)
 			stats.tasksBlocked++
+			stats.stability.recordBlock()
+			recordSubsystemOutcome(stats.subsystems, task, false)
 			saveTasks(tf)
 			continue
 		}
 
 		if !dryRun {
-			if err := applyPatch(diff); err != nil {
+			if err := applyDiffToWorkspace(diff, task); err != nil {
 				logError("patch_apply_failed", task.ID, err.Error())
 				markBlocked(task)
 				stats.tasksBlocked++
+				stats.stability.recordBlock()
+				recordSubsystemOutcome(stats.subsystems, task, false)
 				saveTasks(tf)
 				continue
 			}
@@ -150,13 +173,39 @@ func execute() executionStats {
 
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff)
+			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
+			recordSubsystemOutcome(stats.subsystems, task, true)
+			recordSubsystemPatchMetrics(task, diff)
+			cacheTaskResult(taskCache, task, diff)
+			saveTaskCache(taskCache)
 			saveTasks(tf)
 			continue
 		}
-		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats)
+		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
 	}
+}
+
+// getDiffForTask returns the diff for a task, using the cache when available
+// and falling back to strategic review or normal execution.
+func getDiffForTask(task *Task, context string, taskCache map[string]string, stats *executionStats) string {
+	if cached := cachedDiff(taskCache, task); cached != "" {
+		logInfo("task_cache_hit", task.ID, "using cached diff")
+		return cached
+	}
+	if shouldTriggerStrategicReview(task, stats) {
+		return executeInReviewMode(task, stats)
+	}
+	return executeTask(task, context)
+}
+
+// applyDiffToWorkspace applies a diff to the working tree and then validates
+// post-patch architectural invariants, reverting on violation.
+func applyDiffToWorkspace(diff string, task *Task) error {
+	if err := applyPatch(diff); err != nil {
+		return err
+	}
+	return checkPostPatchInvariants(diff, filesTouched(diff), task)
 }
 
 func resolveBuildFailure(
@@ -167,11 +216,12 @@ func resolveBuildFailure(
 	diff string,
 	buildOut string,
 	stats *executionStats,
+	taskCache map[string]string,
 ) {
 	stats.recordBuildFailure(buildOut)
 	previousFailure := classifyBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
-	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats)
+	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats, taskCache)
 	if buildOut == "" {
 		return
 	}
@@ -195,8 +245,10 @@ func resolveBuildFailure(
 		buildOut = build()
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff)
+			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
+			cacheTaskResult(taskCache, task, diff)
+			saveTaskCache(taskCache)
 			saveTasks(*tf)
 			return
 		}
@@ -218,6 +270,7 @@ func tryTrivialFixes(
 	diff string,
 	buildOut string,
 	stats *executionStats,
+	taskCache map[string]string,
 ) string {
 	touchedFiles := goFilesFromContext(filesTouched(diff))
 	if dryRun || !applyTrivialFixes(touchedFiles, buildOut) {
@@ -233,16 +286,28 @@ func tryTrivialFixes(
 	}
 
 	completeTask(task)
-	stats.recordSuccessfulPatch(diff)
+	stats.recordSuccessfulPatch(diff, task)
 	stats.tasksCompleted++
+	cacheTaskResult(taskCache, task, diff)
+	saveTaskCache(taskCache)
 	saveTasks(*tf)
 	return ""
 }
 
-func (s *executionStats) recordSuccessfulPatch(diff string) {
-	s.largestPatch = max(s.largestPatch, lineCount(diff))
+func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
+	patchSize := lineCount(diff)
+	s.largestPatch = max(s.largestPatch, patchSize)
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
+	}
+	s.trackHighRisk(diff, task)
+	computeReward(task.ID, task.RetryCount, patchSize)
+	s.stability.recordSuccess()
+}
+
+func (s *executionStats) trackHighRisk(diff string, task *Task) {
+	if scorePatchRisk(diff, task).level >= RiskHigh {
+		s.highRiskPatches++
 	}
 }
 
@@ -265,6 +330,7 @@ func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, p
 	}
 
 	s.convergenceAlerts++
+	s.stability.recordOscillation()
 	logInfo(
 		"retry_convergence_alert",
 		taskID,

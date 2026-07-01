@@ -26,6 +26,14 @@ var (
 	dryRun          bool
 	verbose         bool
 	selfEvolve      bool
+	speculativeMode bool
+	transformOnly   bool
+
+	// Model role specialization flags (each defaults to --model when empty)
+	plannerModelName   string
+	executorModelName  string
+	architectModelName string
+	escalateModelName  string // larger model used during escalation events
 
 	// Audit flags
 	auditMode    bool
@@ -47,13 +55,15 @@ const (
 ////////////////////////////////////////////////////////////
 
 type Task struct {
-	ID          string   `json:"id"`
-	Description string   `json:"description"`
-	Files       []string `json:"files,omitempty"`
-	DependsOn   []string `json:"depends_on,omitempty"`
-	Status      string   `json:"status"`
-	RetryCount  int      `json:"retry_count"`
-	Hash        string   `json:"hash"`
+	ID          string     `json:"id"`
+	Description string     `json:"description"`
+	Files       []string   `json:"files,omitempty"`
+	DependsOn   []string   `json:"depends_on,omitempty"`
+	Status      string     `json:"status"`
+	RetryCount  int        `json:"retry_count"`
+	Hash        string     `json:"hash"`
+	ChangeType  ChangeType `json:"change_type,omitempty"`
+	MergedCount int        `json:"merged_count,omitempty"`
 }
 
 type TaskFile struct {
@@ -84,6 +94,12 @@ func parseFlags() {
 	flag.BoolVar(&dryRun, "dry-run", false, "Do not apply patches or commit")
 	flag.BoolVar(&verbose, "verbose", false, "Print logs to stdout")
 	flag.BoolVar(&selfEvolve, "self-evolve", false, "Enable elevated mutation limits for orchestrator self-improvement")
+	flag.BoolVar(&speculativeMode, "speculative", false, "Generate multiple candidate diffs in parallel and pick the highest-confidence one")
+	flag.BoolVar(&transformOnly, "transform-only", false, "Require explicit change_type on every task; reject tasks without one")
+	flag.StringVar(&plannerModelName, "planner-model", "", "Model for task planning (defaults to --model)")
+	flag.StringVar(&executorModelName, "executor-model", "", "Model for task execution (defaults to --model)")
+	flag.StringVar(&architectModelName, "architect-model", "", "Model for task splitting/architecture (defaults to --model)")
+	flag.StringVar(&escalateModelName, "escalate-model", "", "Larger model to use during escalation events (empty = no escalation)")
 	flag.BoolVar(&auditMode, "audit", false, "Enable static analysis mode")
 	flag.StringVar(&auditPattern, "audit-pattern", "./...", "Go package pattern to analyse")
 	flag.StringVar(&auditPass, "audit-pass", "all", "One of architecture, api, concurrency, or all")

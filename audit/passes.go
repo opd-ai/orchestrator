@@ -7,7 +7,22 @@ import (
 
 func RunArchitecturePass(ctx AuditContext) []Finding {
 	findings := architectureHotspotFindings(ctx.Hotspots)
-	return append(findings, isolatedPackageFindings(ctx.CallDensity)...)
+	findings = append(findings, isolatedPackageFindings(ctx.CallDensity)...)
+	findings = append(findings, deadFunctionFindings(ctx.DeadFunctions)...)
+	return findings
+}
+
+func deadFunctionFindings(names []string) []Finding {
+	if len(names) == 0 {
+		return nil
+	}
+	return []Finding{{
+		Type:           "dead_code_candidate",
+		Severity:       "low",
+		Description:    fmt.Sprintf("%d unexported functions appear unreferenced: %v", len(names), names),
+		Recommendation: "Verify these functions are unused and remove them to reduce codebase size.",
+		Confidence:     0.65,
+	}}
 }
 
 func RunAPIPass(ctx AuditContext) []Finding {

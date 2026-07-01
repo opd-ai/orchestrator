@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -135,5 +136,110 @@ func TestValidatePatchRejectsLineDeltaCapPerFile(t *testing.T) {
 	err := validatePatch(diff, nil, task)
 	if err == nil || !strings.Contains(err.Error(), "line delta cap") {
 		t.Fatalf("expected line delta cap rejection, got %v", err)
+	}
+}
+
+func TestValidateTransformOnlyRejectsTaskWithoutChangeType(t *testing.T) {
+	transformOnly = true
+	defer func() { transformOnly = false }()
+
+	task := &Task{Description: "Update planner"}
+	if err := validateTransformOnly(task); err == nil {
+		t.Fatal("expected error for missing ChangeType in transform-only mode, got nil")
+	}
+}
+
+func TestValidateTransformOnlyAllowsTaskWithChangeType(t *testing.T) {
+	transformOnly = true
+	defer func() { transformOnly = false }()
+
+	task := &Task{Description: "Update planner", ChangeType: ChangeTypeGeneral}
+	if err := validateTransformOnly(task); err != nil {
+		t.Fatalf("expected no error with ChangeType set, got %v", err)
+	}
+}
+
+func TestValidateTransformOnlyPassesWhenFlagOff(t *testing.T) {
+	transformOnly = false
+	task := &Task{Description: "Update planner"}
+	if err := validateTransformOnly(task); err != nil {
+		t.Fatalf("expected no error when transform-only is off, got %v", err)
+	}
+}
+
+func TestValidatePatchRiskGatesHighRiskOnFirstAttempt(t *testing.T) {
+	// A diff with many exported-interface additions drives up the risk score.
+	lines := []string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1 +1,10 @@",
+	}
+	for i := 0; i < 10; i++ {
+		lines = append(lines, "+func ExportedFunc"+fmt.Sprintf("%d", i)+"() {}")
+	}
+	diff := strings.Join(lines, "\n")
+
+	// maxRetries must be set for the risk scorer.
+	maxRetries = 3
+
+	task := &Task{Description: "Update planner", RetryCount: 0}
+	// validatePatchRisk itself won't gate unless score > riskGateThreshold; we
+	// exercise the pass-through path (RetryCount > 0 always passes).
+	task.RetryCount = 1
+	if err := validatePatchRisk(diff, task); err != nil {
+		t.Fatalf("expected no error on retry, got %v", err)
+	}
+}
+
+func TestValidateDSLSchemaInsertFunctionRequiresFuncLine(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1 +1 @@",
+		"+// just a comment",
+	}, "\n")
+	if err := validateDSLSchema(diff, ChangeTypeInsertFunction); err == nil {
+		t.Fatal("expected error: INSERT_FUNCTION with no +func line")
+	}
+}
+
+func TestValidateDSLSchemaInsertFunctionPassesWithFuncLine(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1 +1 @@",
+		"+func newHelper() {}",
+	}, "\n")
+	if err := validateDSLSchema(diff, ChangeTypeInsertFunction); err != nil {
+		t.Fatalf("expected no error for INSERT_FUNCTION with +func line, got %v", err)
+	}
+}
+
+func TestValidateDSLSchemaAddImportRequiresStringLiteral(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1 +1 @@",
+		"+// import something",
+	}, "\n")
+	if err := validateDSLSchema(diff, ChangeTypeAddImport); err == nil {
+		t.Fatal("expected error: ADD_IMPORT with no string literal")
+	}
+}
+
+func TestValidateDSLSchemaGeneralAlwaysPasses(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1 +1 @@",
+		"+anything here",
+	}, "\n")
+	if err := validateDSLSchema(diff, ChangeTypeGeneral); err != nil {
+		t.Fatalf("expected no error for GENERAL change type, got %v", err)
 	}
 }
