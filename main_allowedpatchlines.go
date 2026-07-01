@@ -13,9 +13,6 @@ const (
 )
 
 func lineLimit(in int) int {
-	if in < absoluteMinPatchLines {
-		return absoluteMinPatchLines
-	}
 	if in > absoluteMaxPatchLines {
 		return absoluteMaxPatchLines
 	}
@@ -28,9 +25,9 @@ func adaptivePatchBase(defaultBase int) int {
 		return lineLimit(defaultBase)
 	}
 
-	minSafe := lineLimit(int(math.Round(float64(defaultBase) * 0.5)))
+	minSafe := max(absoluteMinPatchLines, int(math.Round(float64(defaultBase)*0.5)))
 	maxSafe := lineLimit(int(math.Round(float64(defaultBase) * 1.6)))
-	derived := lineLimit(int(math.Round(m.AvgSuccessPatchSize)))
+	derived := max(absoluteMinPatchLines, lineLimit(int(math.Round(m.AvgSuccessPatchSize))))
 
 	if derived < minSafe {
 		return minSafe
