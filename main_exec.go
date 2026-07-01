@@ -45,6 +45,7 @@ func runExecutionMode() {
 
 	memory.SaveRun(summary)
 	memory.UpdateMetrics(summary)
+	writeRunSummary(summary)
 }
 
 func execute() executionStats {
@@ -89,6 +90,7 @@ func execute() executionStats {
 		diff := executeTask(task, context)
 
 		if err := validatePatch(diff, contextFiles, task); err != nil {
+			writeRejectedPatch(task.ID, diff)
 
 			if strings.Contains(err.Error(), "too large") {
 				logInfo("patch_too_large_retrying", task.ID, err.Error())
@@ -132,6 +134,7 @@ func execute() executionStats {
 			continue
 		}
 		stats.recordBuildFailure(buildOut)
+		writeBuildFailure(task.ID, buildOut)
 
 		for task.RetryCount < maxRetries {
 			task.RetryCount++
@@ -141,6 +144,7 @@ func execute() executionStats {
 			diff = fixTask(task, context, buildOut)
 
 			if err := validatePatch(diff, contextFiles, task); err != nil {
+				writeRejectedPatch(task.ID, diff)
 				break
 			}
 
@@ -159,6 +163,7 @@ func execute() executionStats {
 				goto next
 			}
 			stats.recordBuildFailure(buildOut)
+			writeBuildFailure(task.ID, buildOut)
 		}
 
 		logInfo("task_splitting", task.ID, "max retries exceeded")
