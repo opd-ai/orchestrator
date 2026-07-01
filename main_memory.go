@@ -17,7 +17,7 @@ func promptWithMemory(prompt string) string {
 	if plannerMemoryContext == "" {
 		return compressPrompt(prompt)
 	}
-	return compressPrompt(plannerMemoryContext + "\n\n" + prompt)
+	return compressPrompt(plannerMemoryContext + "\n" + prompt)
 }
 
 func compressPrompt(prompt string) string {
@@ -36,5 +36,9 @@ func compressPrompt(prompt string) string {
 	if len(compressed) <= promptCharBudget {
 		return compressed
 	}
-	return compressed[:promptCharBudget]
+	runes := []rune(compressed)
+	if len(runes) <= promptCharBudget {
+		return compressed
+	}
+	return string(runes[:promptCharBudget])
 }

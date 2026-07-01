@@ -138,58 +138,84 @@ func execute() executionStats {
 			saveTasks(tf)
 			continue
 		}
-		stats.recordBuildFailure(buildOut)
-		writeBuildFailure(task.ID, buildOut)
-		if !dryRun && applyTrivialFixes(contextFiles, buildOut) {
-			logInfo("trivial_fix_attempted", task.ID, "")
-			buildOut = build()
-			if buildOut == "" {
-				completeTask(task)
-				stats.recordSuccessfulPatch(diff)
-				stats.tasksCompleted++
-				saveTasks(tf)
-				continue
-			}
-			stats.recordBuildFailure(buildOut)
-			writeBuildFailure(task.ID, buildOut)
+		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats)
+	}
+}
+
+func resolveBuildFailure(
+	tf *TaskFile,
+	task *Task,
+	context string,
+	contextFiles []string,
+	diff string,
+	buildOut string,
+	stats *executionStats,
+) {
+	stats.recordBuildFailure(buildOut)
+	writeBuildFailure(task.ID, buildOut)
+	buildOut = tryTrivialFixes(tf, task, contextFiles, diff, buildOut, stats)
+	if buildOut == "" {
+		return
+	}
+
+	for task.RetryCount < maxRetries {
+		task.RetryCount++
+		stats.totalRetries++
+		logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
+
+		diff = fixTask(task, context, buildFixHints(buildOut))
+		if err := validatePatch(diff, contextFiles, task); err != nil {
+			writeRejectedPatch(task.ID, diff)
+			break
 		}
-
-		for task.RetryCount < maxRetries {
-			task.RetryCount++
-			stats.totalRetries++
-			logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
-
-			diff = fixTask(task, context, buildFixHints(buildOut))
-
-			if err := validatePatch(diff, contextFiles, task); err != nil {
-				writeRejectedPatch(task.ID, diff)
+		if !dryRun {
+			if err := applyPatch(diff); err != nil {
 				break
 			}
-
-			if !dryRun {
-				if err := applyPatch(diff); err != nil {
-					break
-				}
-			}
-
-			buildOut = build()
-			if buildOut == "" {
-				completeTask(task)
-				stats.recordSuccessfulPatch(diff)
-				stats.tasksCompleted++
-				saveTasks(tf)
-				goto next
-			}
-			stats.recordBuildFailure(buildOut)
-			writeBuildFailure(task.ID, buildOut)
 		}
 
-		logInfo("task_splitting", task.ID, "max retries exceeded")
-		splitTask(&tf, task)
-		saveTasks(tf)
-
-	next:
+		buildOut = build()
+		if buildOut == "" {
+			completeTask(task)
+			stats.recordSuccessfulPatch(diff)
+			stats.tasksCompleted++
+			saveTasks(*tf)
+			return
+		}
+		stats.recordBuildFailure(buildOut)
+		writeBuildFailure(task.ID, buildOut)
 	}
+
+	logInfo("task_splitting", task.ID, "max retries exceeded")
+	splitTask(tf, task)
+	saveTasks(*tf)
+}
+
+func tryTrivialFixes(
+	tf *TaskFile,
+	task *Task,
+	contextFiles []string,
+	diff string,
+	buildOut string,
+	stats *executionStats,
+) string {
+	if dryRun || !applyTrivialFixes(contextFiles, buildOut) {
+		return buildOut
+	}
+
+	logInfo("trivial_fix_attempted", task.ID, "")
+	buildOut = build()
+	if buildOut != "" {
+		stats.recordBuildFailure(buildOut)
+		writeBuildFailure(task.ID, buildOut)
+		return buildOut
+	}
+
+	completeTask(task)
+	stats.recordSuccessfulPatch(diff)
+	stats.tasksCompleted++
+	saveTasks(*tf)
+	return ""
 }
 
 func (s *executionStats) recordSuccessfulPatch(diff string) {

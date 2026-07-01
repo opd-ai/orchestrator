@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	oversizedTaskDescriptionLimit = 180
+	oversizedTaskConjunctionLimit = 2
+)
+
 ////////////////////////////////////////////////////////////
 // TASK SPLITTING
 ////////////////////////////////////////////////////////////
@@ -89,7 +94,8 @@ func splitMultiFileTask(task *Task) []Task {
 }
 
 func isOversizedTask(description string) bool {
-	return len(description) > 180 || strings.Count(description, " and ") >= 2
+	return len(description) > oversizedTaskDescriptionLimit ||
+		strings.Count(description, " and ") >= oversizedTaskConjunctionLimit
 }
 
 func splitOversizedDescription(task *Task) []Task {

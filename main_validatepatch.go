@@ -6,21 +6,17 @@ import (
 	"strings"
 )
 
+const fullRewriteChangeThreshold = 20
+
 func validatePatch(diff string, allowedFiles []string, task *Task) error {
-	if err := validatePatchSize(diff, task); err != nil {
-		return err
-	}
-
 	touchedFiles := filesTouched(diff)
-	if err := validateTouchedFiles(touchedFiles, allowedFiles, task); err != nil {
-		return err
+	steps := []func() error{
+		func() error { return validatePatchSize(diff, task) },
+		func() error { return validateTouchedFiles(touchedFiles, allowedFiles, task) },
+		func() error { return validatePatchShape(diff, task) },
+		func() error { return validateDeletionRatio(diff) },
 	}
-
-	if err := validatePatchShape(diff, task); err != nil {
-		return err
-	}
-
-	return validateDeletionRatio(diff)
+	return runValidationSteps(steps)
 }
 
 func deletionRatio(diff string) float64 {
@@ -107,7 +103,11 @@ func hasFullFileRewrite(diff string) bool {
 	deletions := 0
 
 	flush := func() bool {
-		return seenHunk && contextLines == 0 && additions > 0 && deletions > 0 && additions+deletions >= 20
+		return seenHunk &&
+			contextLines == 0 &&
+			additions > 0 &&
+			deletions > 0 &&
+			additions+deletions >= fullRewriteChangeThreshold
 	}
 
 	for _, line := range strings.Split(diff, "\n") {
@@ -162,6 +162,15 @@ func validateLineDeltaCaps(diff string, task *Task) error {
 			if deltaByFile[currentFile] > limit {
 				return fmt.Errorf("file %q exceeds line delta cap (%d)", currentFile, limit)
 			}
+		}
+	}
+	return nil
+}
+
+func runValidationSteps(steps []func() error) error {
+	for _, step := range steps {
+		if err := step(); err != nil {
+			return err
 		}
 	}
 	return nil
