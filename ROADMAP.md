@@ -262,17 +262,17 @@ Self-optimizing execution under consumer hardware constraints.
 
 Completion Checklist:
 
-[ ] Implement reward scoring engine
+[x] Implement reward scoring engine
     - retries
     - patch size
     - build speed
 
-[ ] Implement hardware-aware scheduler
+[x] Implement hardware-aware scheduler
     - monitor CPU load
     - adjust parallelism
     - adjust patch limits
 
-[ ] Implement long-run stability monitor
+[x] Implement long-run stability monitor
     - detect oscillation
     - detect regressions
     - trigger safe mode

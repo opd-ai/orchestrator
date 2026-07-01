@@ -14,10 +14,15 @@ func tempStrategy() []float64 { return []float64{0.3, 0.6} }
 
 // speculativeExecute generates candidate diffs at multiple temperatures in parallel,
 // scores each by patch confidence and retry penalty, and returns the best diff.
+// The number of parallel candidates adapts to current CPU load via speculativeCandidateCount.
 // It is concurrency-safe: all goroutines write to distinct result slots and the
 // score computation is pure/stateless.
 func speculativeExecute(task *Task, context string) string {
 	temps := tempStrategy()
+	n := speculativeCandidateCount()
+	if n < len(temps) {
+		temps = temps[:n]
+	}
 	results := make([]speculativeResult, len(temps))
 
 	var wg sync.WaitGroup

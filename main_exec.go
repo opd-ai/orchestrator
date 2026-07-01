@@ -18,6 +18,7 @@ type executionStats struct {
 	failurePatterns    map[string]int
 	convergenceSamples int
 	convergenceAlerts  int
+	stability          stabilityMonitor
 }
 
 func runExecutionMode() {
@@ -140,6 +141,7 @@ func execute() executionStats {
 			logError("patch_rejected", task.ID, err.Error())
 			markBlocked(task)
 			stats.tasksBlocked++
+			stats.stability.recordBlock()
 			saveTasks(tf)
 			continue
 		}
@@ -149,6 +151,7 @@ func execute() executionStats {
 				logError("patch_apply_failed", task.ID, err.Error())
 				markBlocked(task)
 				stats.tasksBlocked++
+				stats.stability.recordBlock()
 				saveTasks(tf)
 				continue
 			}
@@ -158,7 +161,7 @@ func execute() executionStats {
 
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff)
+			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
 			cacheTaskResult(taskCache, task, diff)
 			saveTaskCache(taskCache)
@@ -206,7 +209,7 @@ func resolveBuildFailure(
 		buildOut = build()
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff)
+			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
 			cacheTaskResult(taskCache, task, diff)
 			saveTaskCache(taskCache)
@@ -247,7 +250,7 @@ func tryTrivialFixes(
 	}
 
 	completeTask(task)
-	stats.recordSuccessfulPatch(diff)
+	stats.recordSuccessfulPatch(diff, task)
 	stats.tasksCompleted++
 	cacheTaskResult(taskCache, task, diff)
 	saveTaskCache(taskCache)
@@ -255,11 +258,14 @@ func tryTrivialFixes(
 	return ""
 }
 
-func (s *executionStats) recordSuccessfulPatch(diff string) {
-	s.largestPatch = max(s.largestPatch, lineCount(diff))
+func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
+	patchSize := lineCount(diff)
+	s.largestPatch = max(s.largestPatch, patchSize)
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
 	}
+	computeReward(task.ID, task.RetryCount, patchSize)
+	s.stability.recordSuccess()
 }
 
 func (s *executionStats) recordBuildFailure(buildOut string) {
@@ -281,6 +287,7 @@ func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, p
 	}
 
 	s.convergenceAlerts++
+	s.stability.recordOscillation()
 	logInfo(
 		"retry_convergence_alert",
 		taskID,
