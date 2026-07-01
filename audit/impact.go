@@ -43,17 +43,22 @@ func AnalyzeFile(path string) (*SymbolMap, error) {
 }
 
 // AnalyzeFiles parses multiple Go source files and merges their SymbolMaps.
-// Files that fail to parse are silently skipped.
+// Files that fail to parse are skipped; the first parse error is returned alongside
+// the partial SymbolMap so callers can detect incomplete analysis.
 func AnalyzeFiles(paths []string) (*SymbolMap, error) {
 	merged := newSymbolMap()
+	var firstErr error
 	for _, path := range paths {
 		sm, err := AnalyzeFile(path)
 		if err != nil {
+			if firstErr == nil {
+				firstErr = err
+			}
 			continue
 		}
 		mergeInto(merged, sm)
 	}
-	return merged, nil
+	return merged, firstErr
 }
 
 func newSymbolMap() *SymbolMap {
@@ -68,7 +73,8 @@ func extractSymbols(fset *token.FileSet, node *ast.File, path string, sm *Symbol
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
 			fb := funcBoundary(fset, d, path)
-			sm.Functions[fb.Name] = append(sm.Functions[fb.Name], fb)
+			key := funcSymbolKey(fb.Receiver, fb.Name)
+			sm.Functions[key] = append(sm.Functions[key], fb)
 		case *ast.GenDecl:
 			for _, spec := range d.Specs {
 				ts, ok := spec.(*ast.TypeSpec)
@@ -81,6 +87,15 @@ func extractSymbols(fset *token.FileSet, node *ast.File, path string, sm *Symbol
 			}
 		}
 	}
+}
+
+// funcSymbolKey returns the SymbolMap key for a function/method.
+// Methods are qualified as "Receiver.Name" to distinguish same-named methods on different receivers.
+func funcSymbolKey(receiver, name string) string {
+	if receiver != "" {
+		return receiver + "." + name
+	}
+	return name
 }
 
 func funcBoundary(fset *token.FileSet, d *ast.FuncDecl, path string) FuncBoundary {

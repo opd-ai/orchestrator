@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/opd-ai/orchestrator/audit"
@@ -38,8 +39,8 @@ func generateSymbolTask(id string, st SymbolTask) Task {
 // It is used by the deterministic planning engine to decompose file-level
 // tasks into atomic, symbol-scoped units.
 func symbolTasksForFiles(parentID string, files []string) []Task {
-	sm, err := audit.AnalyzeFiles(files)
-	if err != nil || (len(sm.Functions) == 0 && len(sm.Structs) == 0) {
+	sm, _ := audit.AnalyzeFiles(files)
+	if len(sm.Functions) == 0 && len(sm.Structs) == 0 {
 		return nil
 	}
 	return tasksFromSymbolMap(parentID, sm)
@@ -48,14 +49,42 @@ func symbolTasksForFiles(parentID string, files []string) []Task {
 func tasksFromSymbolMap(parentID string, sm *audit.SymbolMap) []Task {
 	var out []Task
 	idx := 1
-	for _, fbs := range sm.Functions {
+
+	funcKeys := make([]string, 0, len(sm.Functions))
+	for k := range sm.Functions {
+		funcKeys = append(funcKeys, k)
+	}
+	sort.Strings(funcKeys)
+
+	for _, key := range funcKeys {
+		fbs := sm.Functions[key]
+		sort.Slice(fbs, func(i, j int) bool {
+			if fbs[i].File != fbs[j].File {
+				return fbs[i].File < fbs[j].File
+			}
+			return fbs[i].StartLine < fbs[j].StartLine
+		})
 		for _, fb := range fbs {
 			st := SymbolTask{Change: funcChangeType(fb), Symbol: fb.Name, File: fb.File}
 			out = append(out, generateSymbolTask(fmt.Sprintf("%s.s%d", parentID, idx), st))
 			idx++
 		}
 	}
-	for _, sds := range sm.Structs {
+
+	structKeys := make([]string, 0, len(sm.Structs))
+	for k := range sm.Structs {
+		structKeys = append(structKeys, k)
+	}
+	sort.Strings(structKeys)
+
+	for _, key := range structKeys {
+		sds := sm.Structs[key]
+		sort.Slice(sds, func(i, j int) bool {
+			if sds[i].File != sds[j].File {
+				return sds[i].File < sds[j].File
+			}
+			return sds[i].StartLine < sds[j].StartLine
+		})
 		for _, sd := range sds {
 			st := SymbolTask{Change: ChangeModStruct, Symbol: sd.Name, File: sd.File}
 			out = append(out, generateSymbolTask(fmt.Sprintf("%s.s%d", parentID, idx), st))

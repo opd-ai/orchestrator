@@ -4,6 +4,7 @@ import (
 	"go/ast"
 	"go/parser"
 	"go/token"
+	"sort"
 )
 
 // CallEdge represents a directed function call relationship.
@@ -58,6 +59,7 @@ func (dag *FuncDAG) computeInDegrees() (map[string]int, map[string]bool) {
 
 // nodesWithZeroInDegree returns all nodes with in-degree zero (no dependencies),
 // which serve as the starting points for topological processing.
+// The returned slice is sorted to ensure deterministic ordering.
 func nodesWithZeroInDegree(inDegree map[string]int, allNodes map[string]bool) []string {
 	var queue []string
 	for fn := range allNodes {
@@ -65,6 +67,7 @@ func nodesWithZeroInDegree(inDegree map[string]int, allNodes map[string]bool) []
 			queue = append(queue, fn)
 		}
 	}
+	sort.Strings(queue)
 	return queue
 }
 
@@ -74,12 +77,15 @@ func topoProcess(queue []string, callers map[string][]string, inDegree map[strin
 		node := queue[0]
 		queue = queue[1:]
 		order = append(order, node)
+		var newNodes []string
 		for _, caller := range callers[node] {
 			inDegree[caller]--
 			if inDegree[caller] == 0 {
-				queue = append(queue, caller)
+				newNodes = append(newNodes, caller)
 			}
 		}
+		sort.Strings(newNodes)
+		queue = append(queue, newNodes...)
 	}
 	return order
 }
@@ -94,6 +100,12 @@ func addFileToDAG(dag *FuncDAG, path string) {
 		fd, ok := decl.(*ast.FuncDecl)
 		if !ok {
 			continue
+		}
+		// Register every function in Callees so that functions making no calls
+		// still appear in TopologicalOrder.
+		name := fd.Name.Name
+		if _, exists := dag.Callees[name]; !exists {
+			dag.Callees[name] = []string{}
 		}
 		collectCalls(dag, fd, path)
 	}

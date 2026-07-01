@@ -5,8 +5,8 @@ import (
 	"go/parser"
 	"go/token"
 	"os"
-	"testing"
 	"path/filepath"
+	"testing"
 )
 
 const sampleGoSrc = `package sample
@@ -45,8 +45,8 @@ func TestAnalyzeFile_Functions(t *testing.T) {
 	if _, ok := sm.Functions["NewConfig"]; !ok {
 		t.Error("expected NewConfig in Functions")
 	}
-	if _, ok := sm.Functions["Validate"]; !ok {
-		t.Error("expected Validate in Functions")
+	if _, ok := sm.Functions["*Config.Validate"]; !ok {
+		t.Error("expected *Config.Validate in Functions")
 	}
 }
 
@@ -58,9 +58,9 @@ func TestAnalyzeFile_Receiver(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	fbs := sm.Functions["Validate"]
+	fbs := sm.Functions["*Config.Validate"]
 	if len(fbs) == 0 {
-		t.Fatal("Validate not found")
+		t.Fatal("*Config.Validate not found")
 	}
 	if fbs[0].Receiver != "*Config" {
 		t.Errorf("expected *Config receiver, got %q", fbs[0].Receiver)
@@ -121,8 +121,8 @@ func TestAnalyzeFiles_SkipsParseErrors(t *testing.T) {
 	p2 := writeTempFile(t, dir, "bad.go", "package bad\nfunc broken( {")
 
 	sm, err := AnalyzeFiles([]string{p1, p2})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if err == nil {
+		t.Fatal("expected an error for the malformed file")
 	}
 	if _, ok := sm.Functions["Good"]; !ok {
 		t.Error("Good function should be present from the valid file")
