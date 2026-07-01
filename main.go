@@ -203,7 +203,7 @@ Content:
 %s
 `, docType, content)
 
-	resp := callLLM(prompt)
+	resp := callLLM(promptWithMemory(prompt))
 
 	clean, err := extractJSON(resp)
 	if err != nil {

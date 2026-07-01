@@ -18,7 +18,7 @@ Task:
 %s
 `, task.Description)
 
-	resp := callLLM(prompt)
+	resp := callLLM(promptWithMemory(prompt))
 
 	clean, err := extractJSON(resp)
 	if err != nil {
@@ -80,7 +80,7 @@ IMPORTANT CONSTRAINTS:
 - Do not include markdown fences.
 `, allowedPatchLines(task))
 
-	return callLLM(prompt)
+	return callLLM(promptWithMemory(prompt))
 }
 
 func fixTask(task *Task, context, errors string) string {
@@ -104,5 +104,5 @@ Do not rewrite large blocks.
 `,
 		allowedPatchLines(task),
 	)
-	return callLLM(prompt)
+	return callLLM(promptWithMemory(prompt))
 }
