@@ -3,7 +3,7 @@ package memory
 import "fmt"
 
 func SummarizeForPlanner() string {
-	m, err := LoadMetrics()
+	m, err := LoadMetricsFromBranch()
 	if err != nil || m.TotalRuns == 0 {
 		return ""
 	}

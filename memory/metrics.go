@@ -20,6 +20,21 @@ func LoadMetrics() (AdaptiveMetrics, error) {
 	return m, nil
 }
 
+// LoadMetricsFromBranch reads AdaptiveMetrics directly from the memories
+// branch using "git show", without requiring a branch checkout.
+// Falls back to LoadMetrics when the branch or file does not yet exist.
+func LoadMetricsFromBranch() (AdaptiveMetrics, error) {
+	out, err := exec.Command("git", "show", MemoryBranch+":"+MetricsFile).Output()
+	if err != nil {
+		return LoadMetrics()
+	}
+	var m AdaptiveMetrics
+	if err := json.Unmarshal(out, &m); err != nil {
+		return m, err
+	}
+	return m, nil
+}
+
 func SaveMetrics(updated AdaptiveMetrics) error {
 	data, _ := json.MarshalIndent(updated, "", "  ")
 	return os.WriteFile(MetricsFile, data, 0644)

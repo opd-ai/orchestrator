@@ -13,6 +13,9 @@ const (
 )
 
 func lineLimit(in int) int {
+	if in < absoluteMinPatchLines {
+		return absoluteMinPatchLines
+	}
 	if in > absoluteMaxPatchLines {
 		return absoluteMaxPatchLines
 	}
@@ -20,7 +23,7 @@ func lineLimit(in int) int {
 }
 
 func adaptivePatchBase(defaultBase int) int {
-	m, err := memory.LoadMetrics()
+	m, err := memory.LoadMetricsFromBranch()
 	if err != nil || m.TotalRuns == 0 || m.AvgSuccessPatchSize <= 0 {
 		return lineLimit(defaultBase)
 	}
