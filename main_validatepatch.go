@@ -9,6 +9,9 @@ import (
 const fullRewriteChangeThreshold = 20
 
 func validatePatch(diff string, allowedFiles []string, task *Task) error {
+	confidence := evaluatePatchConfidence(diff)
+	logInfo("patch_confidence", task.ID, confidence.message())
+
 	touchedFiles := filesTouched(diff)
 	steps := []func() error{
 		func() error { return validatePatchSize(diff, task) },
