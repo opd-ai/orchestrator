@@ -139,12 +139,12 @@ Completion Checklist:
     - track top N failure types
     - track problematic files
 
-[ ] Implement patch confidence scoring
+[x] Implement patch confidence scoring
     - entropy scoring
     - deletion ratio detection
     - structural churn detection
 
-[ ] Implement retry convergence monitor
+[x] Implement retry convergence monitor
 
 Success Criteria:
 - Stable patch sizes

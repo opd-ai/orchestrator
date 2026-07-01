@@ -34,12 +34,15 @@ func writeRunSummary(summary memory.RunSummary) {
 - Blocked tasks: %d
 - Execution duration: %ds
 - Git branch: %s
+- Retry convergence alerts: %d/%d
 `,
 		summary.TasksTotal,
 		summary.TasksCompleted,
 		summary.TasksBlocked,
 		summary.DurationSeconds,
 		summary.Branch,
+		summary.RetryConvergenceAlerts,
+		summary.RetryConvergenceSamples,
 	)
 
 	writeArtifact("AUTONOMOUS_RUN_SUMMARY.md", content)

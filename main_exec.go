@@ -9,13 +9,15 @@ import (
 )
 
 type executionStats struct {
-	tasksTotal      int
-	tasksCompleted  int
-	tasksBlocked    int
-	totalRetries    int
-	largestPatch    int
-	modifiedFiles   map[string]int
-	failurePatterns map[string]int
+	tasksTotal         int
+	tasksCompleted     int
+	tasksBlocked       int
+	totalRetries       int
+	largestPatch       int
+	modifiedFiles      map[string]int
+	failurePatterns    map[string]int
+	convergenceSamples int
+	convergenceAlerts  int
 }
 
 func runExecutionMode() {
@@ -31,18 +33,20 @@ func runExecutionMode() {
 
 	// Save memory summary at end
 	summary := memory.RunSummary{
-		Timestamp:         time.Now(),
-		Branch:            currentGitBranch(),
-		DurationSeconds:   int64(time.Since(start).Seconds()),
-		TasksTotal:        stats.tasksTotal,
-		TasksCompleted:    stats.tasksCompleted,
-		TasksBlocked:      stats.tasksBlocked,
-		AvgRetries:        averageRetries(stats.totalRetries, stats.tasksTotal),
-		LargestPatch:      stats.largestPatch,
-		MostModifiedFile:  mostModifiedFile(stats.modifiedFiles),
-		MostCommonFailure: mostCommonFailure(stats.failurePatterns),
-		FailurePatterns:   copyCounts(stats.failurePatterns),
-		ModifiedFiles:     copyCounts(stats.modifiedFiles),
+		Timestamp:               time.Now(),
+		Branch:                  currentGitBranch(),
+		DurationSeconds:         int64(time.Since(start).Seconds()),
+		TasksTotal:              stats.tasksTotal,
+		TasksCompleted:          stats.tasksCompleted,
+		TasksBlocked:            stats.tasksBlocked,
+		AvgRetries:              averageRetries(stats.totalRetries, stats.tasksTotal),
+		LargestPatch:            stats.largestPatch,
+		MostModifiedFile:        mostModifiedFile(stats.modifiedFiles),
+		MostCommonFailure:       mostCommonFailure(stats.failurePatterns),
+		RetryConvergenceSamples: stats.convergenceSamples,
+		RetryConvergenceAlerts:  stats.convergenceAlerts,
+		FailurePatterns:         copyCounts(stats.failurePatterns),
+		ModifiedFiles:           copyCounts(stats.modifiedFiles),
 	}
 
 	memory.SaveRun(summary)
@@ -165,6 +169,7 @@ func resolveBuildFailure(
 	stats *executionStats,
 ) {
 	stats.recordBuildFailure(buildOut)
+	previousFailure := classifyBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
 	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats)
 	if buildOut == "" {
@@ -196,6 +201,9 @@ func resolveBuildFailure(
 			return
 		}
 		stats.recordBuildFailure(buildOut)
+		currentFailure := classifyBuildFailure(buildOut)
+		stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
+		previousFailure = currentFailure
 		writeBuildFailure(task.ID, buildOut)
 	}
 
@@ -244,4 +252,22 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 		return
 	}
 	s.failurePatterns[failure]++
+}
+
+func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) {
+	if retryCount < 2 || current == "" {
+		return
+	}
+
+	s.convergenceSamples++
+	if previous != current {
+		return
+	}
+
+	s.convergenceAlerts++
+	logInfo(
+		"retry_convergence_alert",
+		taskID,
+		fmt.Sprintf("retry %d repeated failure %q", retryCount, current),
+	)
 }
