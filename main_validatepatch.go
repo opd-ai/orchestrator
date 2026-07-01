@@ -21,6 +21,7 @@ func validatePatch(diff string, allowedFiles []string, task *Task) error {
 		func() error { return validatePatchShape(diff, task) },
 		func() error { return validateDeletionRatio(diff) },
 		func() error { return validateDSLSchema(diff, task.ChangeType) },
+		func() error { return validateSimulation(diff, touchedFiles, task) },
 	}
 	return runValidationSteps(steps)
 }

@@ -407,17 +407,17 @@ Use CPU parallelism to approximate deeper reasoning.
 
 Completion Checklist:
 
-[ ] Implement multi-strategy branch generation
+[x] Implement multi-strategy branch generation
 
-[ ] Allow alternative design strategies
+[x] Allow alternative design strategies
 
-[ ] Evaluate strategies using:
+[x] Evaluate strategies using:
     - build success
     - risk score
     - diff entropy
     - complexity delta
 
-[ ] Prune losing branches automatically
+[x] Prune losing branches automatically
 
 Success Criteria:
 - Higher success for ambiguous architectural tasks
@@ -432,13 +432,13 @@ Escalate model size only when required.
 
 Completion Checklist:
 
-[ ] Implement model escalation conditions
+[x] Implement model escalation conditions
 
-[ ] Add cooldown period between escalations
+[x] Add cooldown period between escalations
 
-[ ] Log escalation events
+[x] Log escalation events
 
-[ ] Automatically revert to smaller model after completion
+[x] Automatically revert to smaller model after completion
 
 Success Criteria:
 - Low average compute cost
@@ -453,13 +453,13 @@ Catch structural failures before disk write.
 
 Completion Checklist:
 
-[ ] Implement in-memory patch application
+[x] Implement in-memory patch application
 
-[ ] Run AST validation in memory
+[x] Run AST validation in memory
 
-[ ] Detect syntax and type failures pre-build
+[x] Detect syntax and type failures pre-build
 
-[ ] Reject invalid patches before file write
+[x] Reject invalid patches before file write
 
 Success Criteria:
 - Fewer build failures

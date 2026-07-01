@@ -121,7 +121,10 @@ func execute() executionStats {
 		logInfo("task_started", task.ID, task.Description)
 
 		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
-		maybeEscalateTier(task, &stats)  // check escalation triggers for this task
+		deescalateModel(task.ID)         // revert escalated model from previous task
+		maybeEscalateTier(task, &stats)  // check tier escalation triggers for this task
+		taskRisk := scorePatchRisk("", task)
+		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
 
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)

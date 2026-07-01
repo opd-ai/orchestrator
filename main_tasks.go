@@ -127,7 +127,10 @@ func executeTask(task *Task, context string) string {
 	if speculativeMode {
 		return speculativeExecute(task, context)
 	}
-	return callLLMWithModel(prompt, 0.6, roleModel(executorModelName))
+	if activeTier >= Tier2Architectural {
+		return strategyCompete(task, prompt)
+	}
+	return callLLMWithModel(prompt, 0.6, activeExecutorModel())
 }
 
 func buildExecPrompt(task *Task, context string) string {

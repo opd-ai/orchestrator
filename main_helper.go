@@ -33,6 +33,7 @@ var (
 	plannerModelName   string
 	executorModelName  string
 	architectModelName string
+	escalateModelName  string // larger model used during escalation events
 
 	// Audit flags
 	auditMode    bool
@@ -98,6 +99,7 @@ func parseFlags() {
 	flag.StringVar(&plannerModelName, "planner-model", "", "Model for task planning (defaults to --model)")
 	flag.StringVar(&executorModelName, "executor-model", "", "Model for task execution (defaults to --model)")
 	flag.StringVar(&architectModelName, "architect-model", "", "Model for task splitting/architecture (defaults to --model)")
+	flag.StringVar(&escalateModelName, "escalate-model", "", "Larger model to use during escalation events (empty = no escalation)")
 	flag.BoolVar(&auditMode, "audit", false, "Enable static analysis mode")
 	flag.StringVar(&auditPattern, "audit-pattern", "./...", "Go package pattern to analyse")
 	flag.StringVar(&auditPass, "audit-pass", "all", "One of architecture, api, concurrency, or all")
