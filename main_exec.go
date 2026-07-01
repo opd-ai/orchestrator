@@ -48,8 +48,6 @@ func runExecutionMode() {
 }
 
 func execute() executionStats {
-	parseFlags()
-
 	start := time.Now()
 	taskCounter := 0
 	stats := executionStats{
