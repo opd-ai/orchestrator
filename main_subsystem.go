@@ -245,4 +245,3 @@ func logSubsystemStats(metrics map[string]*subsystemMetrics) {
 		))
 	}
 }
-
