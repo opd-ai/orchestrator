@@ -11,7 +11,7 @@ func TestPromptWithMemory(t *testing.T) {
 	plannerMemoryContext = "Recent adaptive metrics"
 
 	prompt := promptWithMemory("Implement the task")
-	if prompt != "Recent adaptive metrics\n\nImplement the task" {
+	if prompt != "Recent adaptive metrics\nImplement the task" {
 		t.Fatalf("unexpected prompt: %q", prompt)
 	}
 }
@@ -27,5 +27,12 @@ func TestPromptWithMemoryWithoutContext(t *testing.T) {
 	prompt := promptWithMemory("Implement the task")
 	if prompt != "Implement the task" {
 		t.Fatalf("unexpected prompt without memory: %q", prompt)
+	}
+}
+
+func TestCompressPromptRemovesNoise(t *testing.T) {
+	input := "  line 1 \n\nline 1\nline 2\n"
+	if got := compressPrompt(input); got != "line 1\nline 2" {
+		t.Fatalf("compressPrompt() = %q, want %q", got, "line 1\nline 2")
 	}
 }

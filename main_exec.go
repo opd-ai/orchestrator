@@ -79,6 +79,11 @@ func execute() executionStats {
 			logInfo("run_complete", "", "All tasks complete")
 			return stats
 		}
+		if enforceTaskGranularity(&tf, task) {
+			logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
+			saveTasks(tf)
+			continue
+		}
 
 		taskCounter++
 		stats.tasksTotal++
@@ -135,13 +140,26 @@ func execute() executionStats {
 		}
 		stats.recordBuildFailure(buildOut)
 		writeBuildFailure(task.ID, buildOut)
+		if !dryRun && applyTrivialFixes(contextFiles, buildOut) {
+			logInfo("trivial_fix_attempted", task.ID, "")
+			buildOut = build()
+			if buildOut == "" {
+				completeTask(task)
+				stats.recordSuccessfulPatch(diff)
+				stats.tasksCompleted++
+				saveTasks(tf)
+				continue
+			}
+			stats.recordBuildFailure(buildOut)
+			writeBuildFailure(task.ID, buildOut)
+		}
 
 		for task.RetryCount < maxRetries {
 			task.RetryCount++
 			stats.totalRetries++
 			logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-			diff = fixTask(task, context, buildOut)
+			diff = fixTask(task, context, buildFixHints(buildOut))
 
 			if err := validatePatch(diff, contextFiles, task); err != nil {
 				writeRejectedPatch(task.ID, diff)
