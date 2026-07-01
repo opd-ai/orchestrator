@@ -30,7 +30,7 @@ func adaptivePatchBase(defaultBase int) int {
 
 	minSafe := max(absoluteMinPatchLines, int(math.Round(float64(defaultBase)*0.5)))
 	maxSafe := lineLimit(int(math.Round(float64(defaultBase) * 1.6)))
-	derived := max(absoluteMinPatchLines, lineLimit(int(math.Round(m.AvgSuccessPatchSize))))
+	derived := lineLimit(int(math.Round(m.AvgSuccessPatchSize)))
 
 	if derived < minSafe {
 		return minSafe
