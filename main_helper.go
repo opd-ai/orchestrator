@@ -26,6 +26,12 @@ var (
 	dryRun          bool
 	verbose         bool
 	selfEvolve      bool
+	speculativeMode bool
+
+	// Model role specialization flags (each defaults to --model when empty)
+	plannerModelName   string
+	executorModelName  string
+	architectModelName string
 
 	// Audit flags
 	auditMode    bool
@@ -84,6 +90,10 @@ func parseFlags() {
 	flag.BoolVar(&dryRun, "dry-run", false, "Do not apply patches or commit")
 	flag.BoolVar(&verbose, "verbose", false, "Print logs to stdout")
 	flag.BoolVar(&selfEvolve, "self-evolve", false, "Enable elevated mutation limits for orchestrator self-improvement")
+	flag.BoolVar(&speculativeMode, "speculative", false, "Generate multiple candidate diffs in parallel and pick the highest-confidence one")
+	flag.StringVar(&plannerModelName, "planner-model", "", "Model for task planning (defaults to --model)")
+	flag.StringVar(&executorModelName, "executor-model", "", "Model for task execution (defaults to --model)")
+	flag.StringVar(&architectModelName, "architect-model", "", "Model for task splitting/architecture (defaults to --model)")
 	flag.BoolVar(&auditMode, "audit", false, "Enable static analysis mode")
 	flag.StringVar(&auditPattern, "audit-pattern", "./...", "Go package pattern to analyse")
 	flag.StringVar(&auditPass, "audit-pass", "all", "One of architecture, api, concurrency, or all")

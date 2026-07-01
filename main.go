@@ -203,7 +203,7 @@ Content:
 %s
 `, docType, content)
 
-	resp := callLLM(promptWithMemory(prompt))
+	resp := callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(plannerModelName))
 
 	clean, err := extractJSON(resp)
 	if err != nil {
@@ -217,15 +217,27 @@ Content:
 	return tasks
 }
 
+// callLLM calls the LLM endpoint with the default model and temperature (0.6).
 func callLLM(prompt string) string {
+	return callLLMWithModel(prompt, 0.6, modelName)
+}
+
+// callLLMWithTemp calls the LLM endpoint with the executor model and given temperature.
+func callLLMWithTemp(prompt string, temperature float64) string {
+	return callLLMWithModel(prompt, temperature, roleModel(executorModelName))
+}
+
+// callLLMWithModel calls the LLM endpoint with explicit model and temperature,
+// enforces the token budget, and logs prompt/completion token usage.
+func callLLMWithModel(prompt string, temperature float64, model string) string {
 	prompt = enforceTokenBudget(prompt)
 
 	body := map[string]interface{}{
-		"model": modelName,
+		"model": model,
 		"messages": []map[string]string{
 			{"role": "user", "content": prompt},
 		},
-		"temperature": 0.6,
+		"temperature": temperature,
 	}
 	b, _ := json.Marshal(body)
 	resp, err := http.Post(llmEndpoint, "application/json", bytes.NewBuffer(b))
@@ -242,9 +254,18 @@ func callLLM(prompt string) string {
 				Content string `json:"content"`
 			} `json:"message"`
 		} `json:"choices"`
+		Usage struct {
+			PromptTokens     int `json:"prompt_tokens"`
+			CompletionTokens int `json:"completion_tokens"`
+			TotalTokens      int `json:"total_tokens"`
+		} `json:"usage"`
 	}
 
 	json.Unmarshal(out, &parsed)
+	logInfo("token_usage", "", fmt.Sprintf(
+		"model=%s prompt=%d completion=%d total=%d",
+		model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens, parsed.Usage.TotalTokens,
+	))
 	return parsed.Choices[0].Message.Content
 }
 

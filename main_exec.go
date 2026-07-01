@@ -72,6 +72,7 @@ func execute() executionStats {
 		modifiedFiles:   make(map[string]int),
 		failurePatterns: make(map[string]int),
 	}
+	taskCache := loadTaskCache()
 
 	if !resumeBranch {
 		ensureBranch()
@@ -109,7 +110,13 @@ func execute() executionStats {
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
 
-		diff := executeTask(task, context)
+		// Use cached diff if available to avoid an unnecessary LLM call.
+		diff := cachedDiff(taskCache, task)
+		if diff == "" {
+			diff = executeTask(task, context)
+		} else {
+			logInfo("task_cache_hit", task.ID, "using cached diff")
+		}
 
 		if err := validatePatch(diff, contextFiles, task); err != nil {
 			writeRejectedPatch(task.ID, diff)
@@ -152,10 +159,12 @@ func execute() executionStats {
 			completeTask(task)
 			stats.recordSuccessfulPatch(diff)
 			stats.tasksCompleted++
+			cacheTaskResult(taskCache, task, diff)
+			saveTaskCache(taskCache)
 			saveTasks(tf)
 			continue
 		}
-		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats)
+		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
 	}
 }
 
@@ -167,11 +176,12 @@ func resolveBuildFailure(
 	diff string,
 	buildOut string,
 	stats *executionStats,
+	taskCache map[string]string,
 ) {
 	stats.recordBuildFailure(buildOut)
 	previousFailure := classifyBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
-	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats)
+	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats, taskCache)
 	if buildOut == "" {
 		return
 	}
@@ -197,6 +207,8 @@ func resolveBuildFailure(
 			completeTask(task)
 			stats.recordSuccessfulPatch(diff)
 			stats.tasksCompleted++
+			cacheTaskResult(taskCache, task, diff)
+			saveTaskCache(taskCache)
 			saveTasks(*tf)
 			return
 		}
@@ -218,6 +230,7 @@ func tryTrivialFixes(
 	diff string,
 	buildOut string,
 	stats *executionStats,
+	taskCache map[string]string,
 ) string {
 	touchedFiles := goFilesFromContext(filesTouched(diff))
 	if dryRun || !applyTrivialFixes(touchedFiles, buildOut) {
@@ -235,6 +248,8 @@ func tryTrivialFixes(
 	completeTask(task)
 	stats.recordSuccessfulPatch(diff)
 	stats.tasksCompleted++
+	cacheTaskResult(taskCache, task, diff)
+	saveTaskCache(taskCache)
 	saveTasks(*tf)
 	return ""
 }

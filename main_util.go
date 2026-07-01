@@ -147,3 +147,12 @@ func exitOnErr(err error) {
 		os.Exit(1)
 	}
 }
+
+// roleModel returns roleVar if it is non-empty, otherwise falls back to modelName.
+// Used to implement model role specialization (--planner-model, --executor-model, etc.).
+func roleModel(roleVar string) string {
+	if roleVar != "" {
+		return roleVar
+	}
+	return modelName
+}

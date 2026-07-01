@@ -25,7 +25,7 @@ Task:
 %s
 `, task.Description)
 
-	resp := callLLM(promptWithMemory(prompt))
+	resp := callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(architectModelName))
 
 	clean, err := extractJSON(resp)
 	if err != nil {
@@ -123,6 +123,14 @@ func splitOversizedDescription(task *Task) []Task {
 ////////////////////////////////////////////////////////////
 
 func executeTask(task *Task, context string) string {
+	prompt := promptWithMemory(buildExecPrompt(task, context))
+	if speculativeMode {
+		return speculativeExecute(task, context)
+	}
+	return callLLMWithModel(prompt, 0.6, roleModel(executorModelName))
+}
+
+func buildExecPrompt(task *Task, context string) string {
 	constraints := []string{
 		"Modify only what is strictly necessary",
 		"Do not refactor unrelated code",
@@ -130,7 +138,7 @@ func executeTask(task *Task, context string) string {
 		"Follow strict unified diff format",
 		"Do not include markdown fences",
 	}
-	prompt := fmt.Sprintf(`
+	return fmt.Sprintf(`
 %s
 
 Task:
@@ -141,8 +149,6 @@ Context:
 
 Return unified diff only.
 `, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
-
-	return callLLM(promptWithMemory(prompt))
 }
 
 func fixTask(task *Task, context, hints string) string {
@@ -162,7 +168,7 @@ Context:
 
 Return unified diff only.
 `, executionBlock("FIX", task, constraints, hints), task.Description, context)
-	return callLLM(promptWithMemory(prompt))
+	return callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(executorModelName))
 }
 
 func executionBlock(mode string, task *Task, constraints []string, failReason string) string {

@@ -160,19 +160,19 @@ Trade cores for reliability.
 
 Completion Checklist:
 
-[ ] Implement multi-branch speculative execution
+[x] Implement multi-branch speculative execution
 
-[ ] Evaluate branches using:
+[x] Evaluate branches using:
     - build success
     - risk score
     - diff entropy
     - retry count
 
-[ ] Implement temperature strategy controller
+[x] Implement temperature strategy controller
     - low-temp first pass
     - moderate-temp fallback
 
-[ ] Ensure concurrency-safe execution manager
+[x] Ensure concurrency-safe execution manager
 
 Success Criteria:
 - Higher complex-task success
@@ -188,16 +188,16 @@ Reduce inference burden aggressively.
 
 Completion Checklist:
 
-[ ] Enforce hard prompt token budget
+[x] Enforce hard prompt token budget
 
-[ ] Implement task hash caching
+[x] Implement task hash caching
 
-[ ] Support model role specialization
+[x] Support model role specialization
     --planner-model
     --executor-model
     --architect-model
 
-[ ] Log token usage metrics
+[x] Log token usage metrics
 
 Success Criteria:
 - Reduced inference frequency
