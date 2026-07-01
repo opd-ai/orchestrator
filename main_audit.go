@@ -30,6 +30,9 @@ func runAuditMode() {
 
 	for _, cluster := range clusters {
 		ctx := audit.BuildAuditContext(cluster, graph)
+		if verbose {
+			fmt.Println(audit.FormatContextForLLM(ctx))
+		}
 
 		findings := runAuditPasses(ctx)
 

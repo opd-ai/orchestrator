@@ -76,9 +76,9 @@ The orchestrator is a document-driven agentic loop for local LLMs that:
 
 - [x] **`averageRetries` is dead code** — `main_util.go:18-23` — Defined as a public utility but never called anywhere in the project. The execution loop counts retries per task but the aggregate `averageRetries` helper is unused. **Remediation:** Wire into `RunSummary.AvgRetries` computation at the end of `execute()`, or remove if the inline calculation is preferred.
 
-- [ ] **`FormatContextForLLM` is dead code** — `audit/context.go:45-63` — This function formats `AuditContext` as a human-readable string suitable for LLM prompts but is never called. The audit mode does not send findings to an LLM at all in the current implementation. **Remediation:** Either call it in `runAuditPasses` when passing context to an LLM-backed enrichment step, or remove it. If a future LLM-augmented audit pass is planned, document this with a comment.
+- [x] **`FormatContextForLLM` is dead code** — `audit/context.go:45-63` — This function formats `AuditContext` as a human-readable string suitable for LLM prompts but is never called. The audit mode does not send findings to an LLM at all in the current implementation. **Remediation:** Either call it in `runAuditPasses` when passing context to an LLM-backed enrichment step, or remove it. If a future LLM-augmented audit pass is planned, document this with a comment.
 
-- [ ] **`FormatContextForLLM` is dead code** (duplicate listing omitted; see above).
+- [x] **`FormatContextForLLM` is dead code** (duplicate listing omitted; see above).
 
 ### MEDIUM
 
@@ -96,7 +96,7 @@ The orchestrator is a document-driven agentic loop for local LLMs that:
 
 ### LOW
 
-- [ ] **`FormatContextForLLM` dead code already classified HIGH** (no additional LOW items).
+- [x] **`FormatContextForLLM` dead code already classified HIGH** (no additional LOW items).
 
 - [ ] **GOALS.md Phase 2 observability not implemented** — GOALS.md §2.2 — Build failures should be saved to `logs/build_failures/<task_id>.log` and rejected patches to `logs/rejected_patches/<task_id>.diff`. Neither directory nor write logic exists. These are tracked items in GOALS.md; they are not critical to core operation. **Remediation:** In `execute()`, after `build()` returns a non-empty error string, write output to `logs/build_failures/<task_id>.log`. After `validatePatch` returns an error, write the diff to `logs/rejected_patches/<task_id>.diff`.
 
