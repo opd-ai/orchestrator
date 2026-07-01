@@ -26,6 +26,7 @@ func runExecutionMode() {
 	// Inject memory into planner
 	memoryContext := memory.SummarizeForPlanner()
 	injectMemoryIntoPlanner(memoryContext)
+	injectInvariantSummary()
 
 	fmt.Println("Execution mode started.")
 	fmt.Println("Model:", modelName)

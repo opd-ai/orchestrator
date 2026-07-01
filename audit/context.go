@@ -26,6 +26,7 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
 		Imports:        imports,
 		Hotspots:       DetectHotspots(files),
 		CallDensity:    callDensity,
+		DeadFunctions:  DeadFunctionScan(files),
 	}
 }
 

@@ -1,6 +1,10 @@
 package main
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/opd-ai/orchestrator/audit"
+)
 
 var plannerMemoryContext string
 
@@ -12,6 +16,26 @@ func injectMemoryIntoPlanner(memoryContext string) {
 		return
 	}
 	logInfo("memory_injected", "", "Adaptive metrics injected into planner")
+}
+
+// injectInvariantSummary loads the invariant registry and appends its
+// summary to plannerMemoryContext so every LLM prompt includes the constraints.
+func injectInvariantSummary() {
+	reg, err := audit.LoadInvariantRegistry()
+	if err != nil {
+		// Registry is optional; absence is not an error.
+		return
+	}
+	summary := reg.Summary()
+	if summary == "" {
+		return
+	}
+	if plannerMemoryContext != "" {
+		plannerMemoryContext = plannerMemoryContext + "\n" + summary
+	} else {
+		plannerMemoryContext = summary
+	}
+	logInfo("invariants_injected", "", "Architectural invariants injected into planner")
 }
 
 func promptWithMemory(prompt string) string {

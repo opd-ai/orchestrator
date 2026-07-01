@@ -1,0 +1,33 @@
+{
+  "invariants": [
+    {
+      "name": "max_function_length",
+      "description": "Functions must not exceed 30 lines",
+      "max_value": 30
+    },
+    {
+      "name": "max_file_length",
+      "description": "Source files must not exceed 400 lines",
+      "max_value": 400
+    },
+    {
+      "name": "no_cyclic_imports",
+      "description": "Import cycles are not permitted",
+      "max_value": 0
+    },
+    {
+      "name": "max_cyclomatic_complexity",
+      "description": "Cyclomatic complexity per function must not exceed 10",
+      "max_value": 10
+    },
+    {
+      "name": "no_global_mutable_state",
+      "description": "Package-level mutable variables must be minimised and protected by flags or mutexes"
+    },
+    {
+      "name": "patch_cap",
+      "description": "No single patch may exceed 50 lines",
+      "max_value": 50
+    }
+  ]
+}

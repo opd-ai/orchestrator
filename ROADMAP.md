@@ -213,17 +213,17 @@ Make codebase easier for quantized models.
 
 Completion Checklist:
 
-[ ] Implement complexity audit tool
+[x] Implement complexity audit tool
     - track function length
     - track file growth
     - basic cyclomatic complexity
 
-[ ] Implement dead code detection
+[x] Implement dead code detection
 
-[ ] Implement invariant registry
+[x] Implement invariant registry
     architecture/invariants.json
 
-[ ] Inject compressed invariant summary into prompts
+[x] Inject compressed invariant summary into prompts
 
 Success Criteria:
 - Reduced structural complexity
