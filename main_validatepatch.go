@@ -7,34 +7,16 @@ import (
 )
 
 func validatePatch(diff string, allowedFiles []string, task *Task) error {
-	limit := allowedPatchLines(task)
+	if err := validatePatchSize(diff, task); err != nil {
+		return err
+	}
+
 	touchedFiles := filesTouched(diff)
-
-	if lineCount(diff) > limit {
-		return fmt.Errorf("patch too large (limit=%d)", limit)
+	if err := validateTouchedFiles(touchedFiles, allowedFiles, task); err != nil {
+		return err
 	}
 
-	if len(touchedFiles) > maxFilesTouched {
-		return errors.New("too many files modified")
-	}
-
-	if len(task.Files) > 0 {
-		allowed := make(map[string]bool, len(allowedFiles))
-		for _, file := range allowedFiles {
-			allowed[file] = true
-		}
-		for _, file := range touchedFiles {
-			if !allowed[file] {
-				return fmt.Errorf("file %q is outside the allowed set", file)
-			}
-		}
-	}
-
-	if deletionRatio(diff) > 0.30 {
-		return errors.New("patch deletes more than 30% of changed lines")
-	}
-
-	return nil
+	return validateDeletionRatio(diff)
 }
 
 func deletionRatio(diff string) float64 {
@@ -58,4 +40,39 @@ func deletionRatio(diff string) float64 {
 	}
 
 	return float64(deletions) / float64(total)
+}
+
+func validatePatchSize(diff string, task *Task) error {
+	limit := allowedPatchLines(task)
+	if lineCount(diff) > limit {
+		return fmt.Errorf("patch too large (limit=%d)", limit)
+	}
+	return nil
+}
+
+func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error {
+	if len(touchedFiles) > maxFilesTouched {
+		return errors.New("too many files modified")
+	}
+	if len(task.Files) == 0 {
+		return nil
+	}
+
+	allowed := make(map[string]bool, len(allowedFiles))
+	for _, file := range allowedFiles {
+		allowed[file] = true
+	}
+	for _, file := range touchedFiles {
+		if !allowed[file] {
+			return fmt.Errorf("file %q is outside the allowed set", file)
+		}
+	}
+	return nil
+}
+
+func validateDeletionRatio(diff string) error {
+	if deletionRatio(diff) > 0.30 {
+		return errors.New("patch deletes more than 30% of changed lines")
+	}
+	return nil
 }

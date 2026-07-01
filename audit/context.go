@@ -11,42 +11,7 @@ import (
 )
 
 func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
-	var exports []SymbolInfo
-	importSet := make(map[string]bool)
-	callDensity := make(map[string]int)
-	fileSet := make(map[string]bool)
-
-	for _, pkgPath := range cluster.Packages {
-		pkg, ok := graph.Packages[pkgPath]
-		if !ok {
-			continue
-		}
-
-		for _, imp := range pkg.Imports {
-			importSet[imp] = true
-		}
-
-		callDensity[pkgPath] = inboundImportCount(graph, pkgPath)
-		exports = append(exports, collectSymbolInfos(pkgPath, pkg.Files)...)
-
-		for _, file := range pkg.Files {
-			if filepath.Ext(file) == ".go" {
-				fileSet[file] = true
-			}
-		}
-	}
-
-	var imports []string
-	for imp := range importSet {
-		imports = append(imports, imp)
-	}
-	slices.Sort(imports)
-
-	var files []string
-	for file := range fileSet {
-		files = append(files, file)
-	}
-	slices.Sort(files)
+	exports, imports, callDensity, files := clusterInputs(cluster, graph)
 
 	summary := fmt.Sprintf(
 		"Cluster %s: %d packages, %d LOC",
@@ -169,4 +134,48 @@ func exprString(expr ast.Expr) string {
 	default:
 		return ""
 	}
+}
+
+func clusterInputs(cluster Cluster, graph *DependencyGraph) ([]SymbolInfo, []string, map[string]int, []string) {
+	var exports []SymbolInfo
+	importSet := make(map[string]bool)
+	callDensity := make(map[string]int)
+	fileSet := make(map[string]bool)
+
+	for _, pkgPath := range cluster.Packages {
+		pkg, ok := graph.Packages[pkgPath]
+		if !ok {
+			continue
+		}
+
+		addImports(importSet, pkg.Imports)
+		callDensity[pkgPath] = inboundImportCount(graph, pkgPath)
+		exports = append(exports, collectSymbolInfos(pkgPath, pkg.Files)...)
+		addGoFiles(fileSet, pkg.Files)
+	}
+
+	return exports, sortedKeys(importSet), callDensity, sortedKeys(fileSet)
+}
+
+func addImports(importSet map[string]bool, imports []string) {
+	for _, imp := range imports {
+		importSet[imp] = true
+	}
+}
+
+func addGoFiles(fileSet map[string]bool, files []string) {
+	for _, file := range files {
+		if filepath.Ext(file) == ".go" {
+			fileSet[file] = true
+		}
+	}
+}
+
+func sortedKeys(values map[string]bool) []string {
+	var keys []string
+	for key := range values {
+		keys = append(keys, key)
+	}
+	slices.Sort(keys)
+	return keys
 }

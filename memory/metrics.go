@@ -32,22 +32,7 @@ func UpdateMetrics(summary RunSummary) error {
 	}
 
 	m, _ := LoadMetrics()
-
-	total := float64(m.TotalRuns)
-
-	m.AvgSuccessPatchSize =
-		((m.AvgSuccessPatchSize * total) +
-			float64(summary.LargestPatch)) / (total + 1)
-
-	m.AvgRetryCount =
-		((m.AvgRetryCount * total) +
-			summary.AvgRetries) / (total + 1)
-
-	m.MostProblematicFile = summary.MostModifiedFile
-	if summary.MostCommonFailure != "" {
-		m.MostCommonFailure = summary.MostCommonFailure
-	}
-	m.TotalRuns++
+	m = mergeSummaryMetrics(m, summary)
 
 	if err := SaveMetrics(m); err != nil {
 		return err
@@ -57,4 +42,22 @@ func UpdateMetrics(summary RunSummary) error {
 	exec.Command("git", "commit", "-m", "memory: update adaptive metrics").Run()
 
 	return checkoutBranch(originalBranch)
+}
+
+func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics {
+	total := float64(m.TotalRuns)
+
+	m.AvgSuccessPatchSize =
+		((m.AvgSuccessPatchSize * total) +
+			float64(summary.LargestPatch)) / (total + 1)
+	m.AvgRetryCount =
+		((m.AvgRetryCount * total) +
+			summary.AvgRetries) / (total + 1)
+	m.MostProblematicFile = summary.MostModifiedFile
+	if summary.MostCommonFailure != "" {
+		m.MostCommonFailure = summary.MostCommonFailure
+	}
+	m.TotalRuns++
+
+	return m
 }
