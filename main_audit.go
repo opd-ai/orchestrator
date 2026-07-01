@@ -29,18 +29,7 @@ func runAuditMode() {
 	var allFindings []audit.Finding
 
 	for _, cluster := range clusters {
-		ctx := audit.BuildAuditContext(cluster, graph)
-
-		findings := runAuditPasses(ctx)
-
-		// Attach package info to findings
-		for i := range findings {
-			if findings[i].Package == "" && len(cluster.Packages) > 0 {
-				findings[i].Package = cluster.Packages[0]
-			}
-		}
-
-		allFindings = append(allFindings, findings...)
+		allFindings = append(allFindings, auditClusterFindings(cluster, graph)...)
 	}
 
 	if auditOutput == "" {
@@ -51,6 +40,21 @@ func runAuditMode() {
 	exitOnErr(audit.SaveFindings(auditOutput, allFindings))
 
 	fmt.Printf("Audit complete in %s\n", time.Since(start))
+}
+
+func auditClusterFindings(cluster audit.Cluster, graph *audit.DependencyGraph) []audit.Finding {
+	ctx := audit.BuildAuditContext(cluster, graph)
+	if verbose {
+		fmt.Println(audit.FormatContextForLLM(ctx))
+	}
+
+	findings := runAuditPasses(ctx)
+	for i := range findings {
+		if findings[i].Package == "" && len(cluster.Packages) > 0 {
+			findings[i].Package = cluster.Packages[0]
+		}
+	}
+	return findings
 }
 
 func runAuditPasses(ctx audit.AuditContext) []audit.Finding {

@@ -4,7 +4,6 @@ type PackageInfo struct {
 	Name    string
 	Path    string
 	Imports []string
-	Exports []string
 	Files   []string
 	LOC     int
 }

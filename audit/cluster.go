@@ -9,28 +9,7 @@ func ClusterPackages(graph *DependencyGraph) []Cluster {
 		if visited[pkg] {
 			continue
 		}
-
-		stack := []string{pkg}
-		var group []string
-		totalLOC := 0
-
-		for len(stack) > 0 {
-			cur := stack[len(stack)-1]
-			stack = stack[:len(stack)-1]
-
-			if visited[cur] {
-				continue
-			}
-			visited[cur] = true
-			group = append(group, cur)
-			totalLOC += graph.Packages[cur].LOC
-
-			for _, dep := range graph.Edges[cur] {
-				if !visited[dep] {
-					stack = append(stack, dep)
-				}
-			}
-		}
+		group, totalLOC := collectCluster(graph, pkg, visited)
 
 		clusters = append(clusters, Cluster{
 			ID:       "cluster_" + string(rune(clusterID)),
@@ -41,4 +20,40 @@ func ClusterPackages(graph *DependencyGraph) []Cluster {
 	}
 
 	return clusters
+}
+
+func collectCluster(graph *DependencyGraph, root string, visited map[string]bool) ([]string, int) {
+	stack := []string{root}
+	var group []string
+	totalLOC := 0
+
+	for len(stack) > 0 {
+		cur := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+
+		if visited[cur] {
+			continue
+		}
+
+		pkgInfo, ok := graph.Packages[cur]
+		if !ok {
+			continue
+		}
+
+		visited[cur] = true
+		group = append(group, cur)
+		totalLOC += pkgInfo.LOC
+		stack = appendUnvisitedDeps(stack, graph.Edges[cur], visited)
+	}
+
+	return group, totalLOC
+}
+
+func appendUnvisitedDeps(stack, deps []string, visited map[string]bool) []string {
+	for _, dep := range deps {
+		if !visited[dep] {
+			stack = append(stack, dep)
+		}
+	}
+	return stack
 }

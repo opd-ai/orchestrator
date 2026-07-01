@@ -10,15 +10,16 @@ const (
 )
 
 type RunSummary struct {
-	Timestamp        time.Time `json:"timestamp"`
-	Branch           string    `json:"branch"`
-	DurationSeconds  int64     `json:"duration_seconds"`
-	TasksTotal       int       `json:"tasks_total"`
-	TasksCompleted   int       `json:"tasks_completed"`
-	TasksBlocked     int       `json:"tasks_blocked"`
-	AvgRetries       float64   `json:"avg_retries"`
-	LargestPatch     int       `json:"largest_patch"`
-	MostModifiedFile string    `json:"most_modified_file"`
+	Timestamp         time.Time `json:"timestamp"`
+	Branch            string    `json:"branch"`
+	DurationSeconds   int64     `json:"duration_seconds"`
+	TasksTotal        int       `json:"tasks_total"`
+	TasksCompleted    int       `json:"tasks_completed"`
+	TasksBlocked      int       `json:"tasks_blocked"`
+	AvgRetries        float64   `json:"avg_retries"`
+	LargestPatch      int       `json:"largest_patch"`
+	MostModifiedFile  string    `json:"most_modified_file"`
+	MostCommonFailure string    `json:"most_common_failure"`
 }
 
 type AdaptiveMetrics struct {

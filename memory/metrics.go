@@ -2,6 +2,7 @@ package memory
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 )
@@ -31,27 +32,42 @@ func UpdateMetrics(summary RunSummary) error {
 		return err
 	}
 
-	m, _ := LoadMetrics()
+	metrics, _ := LoadMetrics()
+	updatedMetrics := mergeSummaryMetrics(metrics, summary)
 
+	if err := SaveMetrics(updatedMetrics); err != nil {
+		return err
+	}
+
+	if err := exec.Command("git", "add", ".").Run(); err != nil {
+		return err
+	}
+	if err := exec.Command("git", "commit", "-m", "memory: update adaptive metrics").Run(); err != nil {
+		var exitErr *exec.ExitError
+		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+			return err
+		}
+	}
+
+	return checkoutBranch(originalBranch)
+}
+
+func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics {
 	total := float64(m.TotalRuns)
 
 	m.AvgSuccessPatchSize =
 		((m.AvgSuccessPatchSize * total) +
 			float64(summary.LargestPatch)) / (total + 1)
-
 	m.AvgRetryCount =
 		((m.AvgRetryCount * total) +
 			summary.AvgRetries) / (total + 1)
-
-	m.MostProblematicFile = summary.MostModifiedFile
+	if summary.MostModifiedFile != "" {
+		m.MostProblematicFile = summary.MostModifiedFile
+	}
+	if summary.MostCommonFailure != "" {
+		m.MostCommonFailure = summary.MostCommonFailure
+	}
 	m.TotalRuns++
 
-	if err := SaveMetrics(m); err != nil {
-		return err
-	}
-
-	exec.Command("git", "add", ".").Run()
-	exec.Command("git", "commit", "-m", "memory: update adaptive metrics").Run()
-
-	return checkoutBranch(originalBranch)
+	return m
 }

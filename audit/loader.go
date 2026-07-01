@@ -10,7 +10,6 @@ func LoadPackages(pattern string) (map[string]*PackageInfo, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName |
 			packages.NeedFiles |
-			packages.NeedSyntax |
 			packages.NeedImports,
 	}
 
