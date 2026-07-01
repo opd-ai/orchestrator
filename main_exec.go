@@ -9,12 +9,13 @@ import (
 )
 
 type executionStats struct {
-	tasksTotal     int
-	tasksCompleted int
-	tasksBlocked   int
-	totalRetries   int
-	largestPatch   int
-	modifiedFiles  map[string]int
+	tasksTotal      int
+	tasksCompleted  int
+	tasksBlocked    int
+	totalRetries    int
+	largestPatch    int
+	modifiedFiles   map[string]int
+	failurePatterns map[string]int
 }
 
 func runExecutionMode() {
@@ -30,15 +31,16 @@ func runExecutionMode() {
 
 	// Save memory summary at end
 	summary := memory.RunSummary{
-		Timestamp:        time.Now(),
-		Branch:           currentGitBranch(),
-		DurationSeconds:  int64(time.Since(start).Seconds()),
-		TasksTotal:       stats.tasksTotal,
-		TasksCompleted:   stats.tasksCompleted,
-		TasksBlocked:     stats.tasksBlocked,
-		AvgRetries:       averageRetries(stats.totalRetries, stats.tasksTotal),
-		LargestPatch:     stats.largestPatch,
-		MostModifiedFile: mostModifiedFile(stats.modifiedFiles),
+		Timestamp:         time.Now(),
+		Branch:            currentGitBranch(),
+		DurationSeconds:   int64(time.Since(start).Seconds()),
+		TasksTotal:        stats.tasksTotal,
+		TasksCompleted:    stats.tasksCompleted,
+		TasksBlocked:      stats.tasksBlocked,
+		AvgRetries:        averageRetries(stats.totalRetries, stats.tasksTotal),
+		LargestPatch:      stats.largestPatch,
+		MostModifiedFile:  mostModifiedFile(stats.modifiedFiles),
+		MostCommonFailure: mostCommonFailure(stats.failurePatterns),
 	}
 
 	memory.SaveRun(summary)
@@ -51,7 +53,8 @@ func execute() executionStats {
 	start := time.Now()
 	taskCounter := 0
 	stats := executionStats{
-		modifiedFiles: make(map[string]int),
+		modifiedFiles:   make(map[string]int),
+		failurePatterns: make(map[string]int),
 	}
 
 	if !resumeBranch {
@@ -130,6 +133,7 @@ func execute() executionStats {
 			saveTasks(tf)
 			continue
 		}
+		stats.recordBuildFailure(buildOut)
 
 		for task.RetryCount < maxRetries {
 			task.RetryCount++
@@ -156,6 +160,7 @@ func execute() executionStats {
 				saveTasks(tf)
 				goto next
 			}
+			stats.recordBuildFailure(buildOut)
 		}
 
 		logInfo("task_splitting", task.ID, "max retries exceeded")
@@ -171,4 +176,12 @@ func (s *executionStats) recordSuccessfulPatch(diff string) {
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
 	}
+}
+
+func (s *executionStats) recordBuildFailure(buildOut string) {
+	failure := classifyBuildFailure(buildOut)
+	if failure == "" {
+		return
+	}
+	s.failurePatterns[failure]++
 }

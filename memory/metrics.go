@@ -44,6 +44,9 @@ func UpdateMetrics(summary RunSummary) error {
 			summary.AvgRetries) / (total + 1)
 
 	m.MostProblematicFile = summary.MostModifiedFile
+	if summary.MostCommonFailure != "" {
+		m.MostCommonFailure = summary.MostCommonFailure
+	}
 	m.TotalRuns++
 
 	if err := SaveMetrics(m); err != nil {

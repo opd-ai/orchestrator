@@ -82,7 +82,7 @@ The orchestrator is a document-driven agentic loop for local LLMs that:
 
 ### MEDIUM
 
-- [ ] **`AdaptiveMetrics.MostCommonFailure` never set or read** — `memory/types.go:28` — Field `MostCommonFailure string` is declared, JSON-tagged, and persisted/loaded, but no code ever assigns a value to it and `SummarizeForPlanner` never reads it. **Remediation:** In the execution loop, track error message patterns (e.g., `undefined:`, `cannot use`) and set `MostCommonFailure` in the summary before calling `memory.UpdateMetrics`.
+- [x] **`AdaptiveMetrics.MostCommonFailure` never set or read** — `memory/types.go:28` — Field `MostCommonFailure string` is declared, JSON-tagged, and persisted/loaded, but no code ever assigns a value to it and `SummarizeForPlanner` never reads it. **Remediation:** In the execution loop, track error message patterns (e.g., `undefined:`, `cannot use`) and set `MostCommonFailure` in the summary before calling `memory.UpdateMetrics`.
 
 - [ ] **`parseFlags()` called twice** — `main_loop.go:4`, `main_exec.go:34` — `main()` calls `parseFlags()`, then `runExecutionMode()` → `execute()` calls `parseFlags()` a second time. Calling `flag.Parse()` twice on the same `FlagSet` is benign in current Go stdlib but is a latent source of confusion when flags are added or when the default `CommandLine` is replaced. **Remediation:** Remove the `parseFlags()` call from `execute()`.
 
