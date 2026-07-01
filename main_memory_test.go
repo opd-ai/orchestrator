@@ -30,9 +30,9 @@ func TestPromptWithMemoryWithoutContext(t *testing.T) {
 	}
 }
 
-func TestCompressPromptRemovesNoise(t *testing.T) {
-	input := "  line 1 \n\nline 1\nline 2\n"
-	if got := compressPrompt(input); got != "line 1\nline 2" {
-		t.Fatalf("compressPrompt() = %q, want %q", got, "line 1\nline 2")
+func TestCompressPromptPreservesStructure(t *testing.T) {
+	input := "  line 1\n\nline 1\n\tline 2\n"
+	if got := compressPrompt(input); got != "line 1\n\nline 1\n\tline 2" {
+		t.Fatalf("compressPrompt() = %q, want %q", got, "line 1\n\nline 1\n\tline 2")
 	}
 }

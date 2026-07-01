@@ -143,7 +143,7 @@ func hasFullFileRewrite(diff string) bool {
 }
 
 func validateLineDeltaCaps(diff string, task *Task) error {
-	limit := max(1, allowedPatchLines(task)/2)
+	limit := perFileLineDeltaCap(task)
 	deltaByFile := make(map[string]int)
 	currentFile := ""
 	inHunk := false
@@ -165,6 +165,10 @@ func validateLineDeltaCaps(diff string, task *Task) error {
 		}
 	}
 	return nil
+}
+
+func perFileLineDeltaCap(task *Task) int {
+	return max(1, allowedPatchLines(task)/2)
 }
 
 func runValidationSteps(steps []func() error) error {

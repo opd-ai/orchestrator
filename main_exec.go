@@ -153,7 +153,7 @@ func resolveBuildFailure(
 ) {
 	stats.recordBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
-	buildOut = tryTrivialFixes(tf, task, contextFiles, diff, buildOut, stats)
+	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats)
 	if buildOut == "" {
 		return
 	}
@@ -194,12 +194,12 @@ func resolveBuildFailure(
 func tryTrivialFixes(
 	tf *TaskFile,
 	task *Task,
-	contextFiles []string,
 	diff string,
 	buildOut string,
 	stats *executionStats,
 ) string {
-	if dryRun || !applyTrivialFixes(contextFiles, buildOut) {
+	touchedFiles := goFilesFromContext(filesTouched(diff))
+	if dryRun || !applyTrivialFixes(touchedFiles, buildOut) {
 		return buildOut
 	}
 

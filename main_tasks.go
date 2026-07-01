@@ -133,11 +133,14 @@ func executeTask(task *Task, context string) string {
 	prompt := fmt.Sprintf(`
 %s
 
+Task:
+%s
+
 Context:
 %s
 
 Return unified diff only.
-`, executionBlock("EXECUTE", task, constraints, ""), context)
+`, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
 
 	return callLLM(promptWithMemory(prompt))
 }
@@ -169,6 +172,7 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	b.WriteString("TASK_ID: " + task.ID + "\n")
 	b.WriteString("FILES_ALLOWED: " + strings.Join(task.Files, ",") + "\n")
 	b.WriteString(fmt.Sprintf("MAX_PATCH_LINES: %d\n", allowedPatchLines(task)))
+	b.WriteString(fmt.Sprintf("MAX_FILE_PATCH_LINES: %d\n", perFileLineDeltaCap(task)))
 	b.WriteString("CONSTRAINTS:\n")
 	for _, constraint := range constraints {
 		b.WriteString("- " + constraint + "\n")

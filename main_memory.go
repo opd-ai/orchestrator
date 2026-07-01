@@ -3,6 +3,7 @@ package main
 import "strings"
 
 var plannerMemoryContext string
+
 const promptCharBudget = 6000
 
 func injectMemoryIntoPlanner(memoryContext string) {
@@ -21,18 +22,7 @@ func promptWithMemory(prompt string) string {
 }
 
 func compressPrompt(prompt string) string {
-	lines := strings.Split(prompt, "\n")
-	out := make([]string, 0, len(lines))
-	last := ""
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || line == last {
-			continue
-		}
-		out = append(out, line)
-		last = line
-	}
-	compressed := strings.Join(out, "\n")
+	compressed := strings.TrimSpace(prompt)
 	if len(compressed) <= promptCharBudget {
 		return compressed
 	}
