@@ -38,6 +38,8 @@ func generateSymbolTask(id string, st SymbolTask) Task {
 // symbolTasksForFiles analyzes the given files and returns one Task per symbol.
 // It is used by the deterministic planning engine to decompose file-level
 // tasks into atomic, symbol-scoped units.
+// Any parse errors are intentionally ignored: AnalyzeFiles returns a partial
+// SymbolMap for the files that did parse, which is sufficient for planning.
 func symbolTasksForFiles(parentID string, files []string) []Task {
 	sm, _ := audit.AnalyzeFiles(files)
 	if len(sm.Functions) == 0 && len(sm.Structs) == 0 {

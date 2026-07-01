@@ -10,6 +10,8 @@ import (
 
 // gatherContextForTask returns function-scoped context when a target function is
 // identifiable from the task description, otherwise returns full file context.
+// Parse errors from AnalyzeFiles are intentionally ignored: the partial SymbolMap
+// returned for successfully-parsed files is still useful for context narrowing.
 func gatherContextForTask(task *Task, files []string) string {
 	sm, _ := audit.AnalyzeFiles(files)
 	if len(sm.Functions) == 0 && len(sm.Structs) == 0 {
@@ -43,7 +45,7 @@ func matchSymbol(desc string, sm *audit.SymbolMap) string {
 			continue
 		}
 		name := fbs[0].Name
-		if len(name) < 4 {
+		if len(name) < minSymbolNameLen {
 			// Skip very short names to reduce false positives.
 			continue
 		}
@@ -82,7 +84,10 @@ func funcScopedContext(key string, sm *audit.SymbolMap, taskFiles []string) stri
 	return ""
 }
 
-// containsWord reports whether text contains word as a whole identifier token
+// minSymbolNameLen is the minimum character length a function name must have to be
+// considered as a match candidate. Very short names (e.g. "id", "ok") produce too
+// many false positives when searched as substrings of task descriptions.
+const minSymbolNameLen = 4
 // (case-insensitive). Adjacent identifier characters (letters, digits, underscore)
 // on either side disqualify the match.
 func containsWord(text, word string) bool {
