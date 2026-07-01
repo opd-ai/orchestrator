@@ -21,9 +21,13 @@ func ClusterPackages(graph *DependencyGraph) []Cluster {
 			if visited[cur] {
 				continue
 			}
+			pkgInfo, ok := graph.Packages[cur]
+			if !ok {
+				continue
+			}
 			visited[cur] = true
 			group = append(group, cur)
-			totalLOC += graph.Packages[cur].LOC
+			totalLOC += pkgInfo.LOC
 
 			for _, dep := range graph.Edges[cur] {
 				if !visited[dep] {

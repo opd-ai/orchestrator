@@ -84,11 +84,15 @@ func parseFlags() {
 	flag.BoolVar(&dryRun, "dry-run", false, "Do not apply patches or commit")
 	flag.BoolVar(&verbose, "verbose", false, "Print logs to stdout")
 	flag.BoolVar(&selfEvolve, "self-evolve", false, "Enable elevated mutation limits for orchestrator self-improvement")
+	flag.BoolVar(&auditMode, "audit", false, "Enable static analysis mode")
+	flag.StringVar(&auditPattern, "audit-pattern", "./...", "Go package pattern to analyse")
+	flag.StringVar(&auditPass, "audit-pass", "all", "One of architecture, api, concurrency, or all")
+	flag.StringVar(&auditOutput, "audit-output", "audit_findings.json", "Output file for findings")
 
 	flag.Usage = func() {
 		fmt.Println("Autonomous Engineering Orchestrator")
 		fmt.Println("\nUsage:")
-		fmt.Println("  orchestrator [options]\n")
+		fmt.Println("  orchestrator [options]")
 		flag.PrintDefaults()
 	}
 
