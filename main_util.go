@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"slices"
 	"strings"
 )
 
@@ -20,6 +21,27 @@ func averageRetries(totalRetries, tasks int) float64 {
 		return 0
 	}
 	return float64(totalRetries) / float64(tasks)
+}
+
+func mostModifiedFile(files map[string]int) string {
+	var best string
+	bestCount := 0
+
+	for file, count := range files {
+		if count > bestCount {
+			best = file
+			bestCount = count
+			continue
+		}
+
+		if count == bestCount && count > 0 {
+			candidates := []string{best, file}
+			slices.Sort(candidates)
+			best = candidates[0]
+		}
+	}
+
+	return best
 }
 
 func exitOnErr(err error) {

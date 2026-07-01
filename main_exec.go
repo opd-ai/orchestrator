@@ -8,6 +8,15 @@ import (
 	"github.com/opd-ai/orchestrator/memory"
 )
 
+type executionStats struct {
+	tasksTotal     int
+	tasksCompleted int
+	tasksBlocked   int
+	totalRetries   int
+	largestPatch   int
+	modifiedFiles  map[string]int
+}
+
 func runExecutionMode() {
 	start := time.Now()
 
@@ -17,24 +26,33 @@ func runExecutionMode() {
 
 	fmt.Println("Execution mode started.")
 	fmt.Println("Model:", modelName)
-	execute()
+	stats := execute()
 
 	// Save memory summary at end
 	summary := memory.RunSummary{
-		Timestamp:       time.Now(),
-		Branch:          currentGitBranch(),
-		DurationSeconds: int64(time.Since(start).Seconds()),
+		Timestamp:        time.Now(),
+		Branch:           currentGitBranch(),
+		DurationSeconds:  int64(time.Since(start).Seconds()),
+		TasksTotal:       stats.tasksTotal,
+		TasksCompleted:   stats.tasksCompleted,
+		TasksBlocked:     stats.tasksBlocked,
+		AvgRetries:       averageRetries(stats.totalRetries, stats.tasksTotal),
+		LargestPatch:     stats.largestPatch,
+		MostModifiedFile: mostModifiedFile(stats.modifiedFiles),
 	}
 
 	memory.SaveRun(summary)
 	memory.UpdateMetrics(summary)
 }
 
-func execute() {
+func execute() executionStats {
 	parseFlags()
 
 	start := time.Now()
 	taskCounter := 0
+	stats := executionStats{
+		modifiedFiles: make(map[string]int),
+	}
 
 	if !resumeBranch {
 		ensureBranch()
@@ -45,22 +63,23 @@ func execute() {
 	for {
 		if maxRuntime > 0 && time.Since(start) > maxRuntime {
 			logInfo("max_runtime_reached", "", "")
-			return
+			return stats
 		}
 
 		if maxTasks > 0 && taskCounter >= maxTasks {
 			logInfo("max_tasks_reached", "", "")
-			return
+			return stats
 		}
 
 		tf := loadTasks()
 		task := nextExecutableTask(&tf)
 		if task == nil {
 			logInfo("run_complete", "", "All tasks complete")
-			return
+			return stats
 		}
 
 		taskCounter++
+		stats.tasksTotal++
 		logInfo("task_started", task.ID, task.Description)
 
 		contextFiles := resolveContextFiles(task)
@@ -73,6 +92,7 @@ func execute() {
 			if strings.Contains(err.Error(), "too large") {
 				logInfo("patch_too_large_retrying", task.ID, err.Error())
 				task.RetryCount++
+				stats.totalRetries++
 
 				if task.RetryCount < maxRetries {
 					continue
@@ -86,6 +106,7 @@ func execute() {
 
 			logError("patch_rejected", task.ID, err.Error())
 			markBlocked(task)
+			stats.tasksBlocked++
 			saveTasks(tf)
 			continue
 		}
@@ -94,6 +115,7 @@ func execute() {
 			if err := applyPatch(diff); err != nil {
 				logError("patch_apply_failed", task.ID, err.Error())
 				markBlocked(task)
+				stats.tasksBlocked++
 				saveTasks(tf)
 				continue
 			}
@@ -103,12 +125,15 @@ func execute() {
 
 		if buildOut == "" {
 			completeTask(task)
+			stats.recordSuccessfulPatch(diff)
+			stats.tasksCompleted++
 			saveTasks(tf)
 			continue
 		}
 
 		for task.RetryCount < maxRetries {
 			task.RetryCount++
+			stats.totalRetries++
 			logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
 			diff = fixTask(task, context, buildOut)
@@ -126,6 +151,8 @@ func execute() {
 			buildOut = build()
 			if buildOut == "" {
 				completeTask(task)
+				stats.recordSuccessfulPatch(diff)
+				stats.tasksCompleted++
 				saveTasks(tf)
 				goto next
 			}
@@ -136,5 +163,12 @@ func execute() {
 		saveTasks(tf)
 
 	next:
+	}
+}
+
+func (s *executionStats) recordSuccessfulPatch(diff string) {
+	s.largestPatch = max(s.largestPatch, lineCount(diff))
+	for _, file := range filesTouched(diff) {
+		s.modifiedFiles[file]++
 	}
 }
