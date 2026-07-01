@@ -90,7 +90,7 @@ func execute() executionStats {
 		logInfo("task_started", task.ID, task.Description)
 
 		contextFiles := resolveContextFiles(task)
-		context := gatherFileContext(contextFiles)
+		context := gatherContextForTask(task, contextFiles)
 
 		diff := executeTask(task, context)
 
