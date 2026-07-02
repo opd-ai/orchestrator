@@ -173,7 +173,7 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 - [x] Add a `tempForRetry(retryCount int) float64` helper returning `0.3` on retry 1 (conservative restatement), `0.7` on retry 2 (exploratory), `0.5` on retry 3+ (balanced). Replace the hardcoded `0.6` in `fixTask` with this helper.
 - [x] When `recordRetryConvergence` detects two consecutive identical failure categories, immediately force the next retry to use the architect model (`roleModel(architectModelName)`) and temperature 0.8 rather than continuing with the executor model.
   - Reference: `main_exec.go:attemptBuildFixRetries:297` is where the oscillation is detected; route model selection there instead of only logging.
-- [ ] **Validation**: compare `retry_convergence_alerts / retry_convergence_samples` before and after across a sample run. Target: ratio drops below 20 %. Also confirm `go test -race ./...` exits 0 after the change.
+- [x] **Validation**: compare `retry_convergence_alerts / retry_convergence_samples` before and after across a sample run. Target: ratio drops below 20 %. Also confirm `go test -race ./...` exits 0 after the change.
 
 ---
 
@@ -181,12 +181,12 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: `gatherFileContext` reads each file with `os.ReadFile` and concatenates raw bytes without any per-file size limit. A single large file (e.g. `main_exec.go` at ~350 lines) can consume the entire 6,000-character prompt budget, cutting off the task description and all subsequent context files. This is the dominant cause of first-attempt inference failures on tasks that reference multiple files.
 
-- [ ] Add `const maxBytesPerFile = 2000` to `main.go`. In `gatherFileContext`, truncate each file's contribution to `maxBytesPerFile` bytes before appending. When a file exceeds the cap, replace its body with the output of a new `extractSignatures(data []byte) []byte` helper that retains only lines beginning with `func `, `type `, `var `, or `const ` — preserving the callable surface without body detail.
+- [x] Add `const maxBytesPerFile = 2000` to `main.go`. In `gatherFileContext`, truncate each file's contribution to `maxBytesPerFile` bytes before appending. When a file exceeds the cap, replace its body with the output of a new `extractSignatures(data []byte) []byte` helper that retains only lines beginning with `func `, `type `, `var `, or `const ` — preserving the callable surface without body detail.
   - Reference: `main.go:gatherFileContext` (lines ≈169-179); `main_context.go:funcScopedContext` already does a variant of this for function bodies.
-- [ ] In `funcScopedContext`, when `extractBoundaryContext` would return more than `maxBytesPerFile` bytes for a single function body, truncate at the boundary and append `"// ... (truncated)"` so the model is aware.
-- [ ] Adjust `promptCharBudget` (currently 6000) to account for the memory preamble (~400 chars) and execution block (~300 chars), leaving ~5300 chars for actual file context. Document this budget split in a comment above `compressPrompt`.
+- [x] In `funcScopedContext`, when `extractBoundaryContext` would return more than `maxBytesPerFile` bytes for a single function body, truncate at the boundary and append `"// ... (truncated)"` so the model is aware.
+- [x] Adjust `promptCharBudget` (currently 6000) to account for the memory preamble (~400 chars) and execution block (~300 chars), leaving ~5300 chars for actual file context. Document this budget split in a comment above `compressPrompt`.
   - Reference: `main_memory.go:11`.
-- [ ] **Validation**: create a task referencing a file > 2000 chars; confirm the prompt sent to the model (visible in verbose mode) contains the signature-only version and total prompt length stays under 6000 chars.
+- [x] **Validation**: create a task referencing a file > 2000 chars; confirm the prompt sent to the model (visible in verbose mode) contains the signature-only version and total prompt length stays under 6000 chars.
 
 ---
 
@@ -194,12 +194,12 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: When `splitTask` or `splitMultiFileTask` decomposes a parent task into N subtasks, all N are set to `status: pending` with the parent's original deps — but no intra-group ordering is established. Two subtasks targeting the same file can both become eligible simultaneously. When the second subtask's patch tool applies against the tree already modified by the first, the context lines no longer match, producing a `patch_apply_failed` event that marks the subtask blocked with no meaningful error.
 
-- [ ] In `splitTask` (`main_tasks.go`), after building the subtask slice, wire sequential deps: `subtasks[i].DependsOn = append(subtasks[i].DependsOn, subtasks[i-1].ID)` for `i ≥ 1`. This guarantees the second subtask cannot start until the first has committed.
-- [ ] Apply the same sequential wiring in `splitMultiFileTask` and `splitOversizedDescription`.
+- [x] In `splitTask` (`main_tasks.go`), after building the subtask slice, wire sequential deps: `subtasks[i].DependsOn = append(subtasks[i].DependsOn, subtasks[i-1].ID)` for `i ≥ 1`. This guarantees the second subtask cannot start until the first has committed.
+- [x] Apply the same sequential wiring in `splitMultiFileTask` and `splitOversizedDescription`.
   - Exception: skip sequential wiring when `symbolTasksForFiles` confirms the subtasks target non-overlapping line ranges in the same file (i.e. `fbs[i].EndLine < fbs[i+1].StartLine`). This preserves true independence where it exists.
-- [ ] In `ensureTasksFile`, add a post-generation pass `injectFileOverlapDeps(tasks []Task) []Task` that inspects the `task.Files` list of every pair of pending tasks: if task B appears after task A in document order and both list file F, add A's ID to B's `DependsOn`.
+- [x] In `ensureTasksFile`, add a post-generation pass `injectFileOverlapDeps(tasks []Task) []Task` that inspects the `task.Files` list of every pair of pending tasks: if task B appears after task A in document order and both list file F, add A's ID to B's `DependsOn`.
   - Reference: `main.go:ensureTasksFile` — call `injectFileOverlapDeps` before `saveTasks`.
-- [ ] **Validation**: generate two tasks that both reference the same file; confirm `nextExecutableTask` only returns the second after the first is `complete`. Measure `patch_apply_failed` rate for tasks with `.s\d` suffixes in their IDs before and after.
+- [x] **Validation**: generate two tasks that both reference the same file; confirm `nextExecutableTask` only returns the second after the first is `complete`. Measure `patch_apply_failed` rate for tasks with `.s\d` suffixes in their IDs before and after.
 
 ---
 

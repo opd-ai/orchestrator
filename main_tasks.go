@@ -54,7 +54,11 @@ Task:
 	for i := range subtasks {
 		subtasks[i].ID = fmt.Sprintf("%s%d", prefix, i+1)
 		subtasks[i].Status = "pending"
-		subtasks[i].DependsOn = task.DependsOn
+		subtasks[i].DependsOn = append([]string(nil), task.DependsOn...)
+	}
+	// Wire sequential deps so subtask[i] cannot start until subtask[i-1] commits.
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
 	}
 
 	replaceTask(tf, task.ID, subtasks)
@@ -117,6 +121,7 @@ func isAlreadySymbolTask(id string) bool {
 }
 
 // splitMultiFileTask turns a multi-file task into one pending subtask per file.
+// Subtasks are wired sequentially so the second cannot start until the first commits.
 func splitMultiFileTask(task *Task) []Task {
 	prefix := task.ID + "."
 	subtasks := make([]Task, 0, len(task.Files))
@@ -125,9 +130,12 @@ func splitMultiFileTask(task *Task) []Task {
 			ID:          fmt.Sprintf("%s%d", prefix, i+1),
 			Description: fmt.Sprintf("%s (%s)", task.Description, file),
 			Files:       []string{file},
-			DependsOn:   task.DependsOn,
+			DependsOn:   append([]string(nil), task.DependsOn...),
 			Status:      "pending",
 		})
+	}
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
 	}
 	return subtasks
 }
@@ -139,6 +147,7 @@ func isOversizedTask(description string) bool {
 }
 
 // splitOversizedDescription breaks a long description into smaller pending subtasks.
+// Subtasks are wired sequentially so the second cannot start until the first commits.
 func splitOversizedDescription(task *Task) []Task {
 	parts := regexp.MustCompile(`\s*(?:;|,|\band\b)\s*`).Split(task.Description, -1)
 	prefix := task.ID + "."
@@ -152,11 +161,59 @@ func splitOversizedDescription(task *Task) []Task {
 			ID:          fmt.Sprintf("%s%d", prefix, len(subtasks)+1),
 			Description: part,
 			Files:       append([]string(nil), task.Files...),
-			DependsOn:   task.DependsOn,
+			DependsOn:   append([]string(nil), task.DependsOn...),
 			Status:      "pending",
 		})
 	}
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
+	}
 	return subtasks
+}
+
+////////////////////////////////////////////////////////////
+// DEPENDENCY HELPERS
+////////////////////////////////////////////////////////////
+
+// appendDepUnique appends id to deps only when it is not already present.
+func appendDepUnique(deps []string, id string) []string {
+	for _, d := range deps {
+		if d == id {
+			return deps
+		}
+	}
+	return append(deps, id)
+}
+
+// injectFileOverlapDeps adds dependency edges between pending tasks that share a
+// common file target. For every pair (A, B) where B appears after A in document
+// order and both list the same file, A's ID is added to B's DependsOn so that B
+// cannot start until A has committed its patch.
+// Uses a file→ownerIDs index to avoid an O(n²) scan.
+func injectFileOverlapDeps(tasks []Task) []Task {
+	// Build file → ordered list of task IDs that reference it.
+	fileToOwners := make(map[string][]string)
+	for i := range tasks {
+		for _, f := range tasks[i].Files {
+			fileToOwners[f] = append(fileToOwners[f], tasks[i].ID)
+		}
+	}
+	// Build task ID → document-order index for O(1) comparisons.
+	taskPos := make(map[string]int, len(tasks))
+	for i, t := range tasks {
+		taskPos[t.ID] = i
+	}
+	// For each task, add deps from every earlier owner of each shared file.
+	for i := range tasks {
+		for _, f := range tasks[i].Files {
+			for _, ownerID := range fileToOwners[f] {
+				if taskPos[ownerID] < i {
+					tasks[i].DependsOn = appendDepUnique(tasks[i].DependsOn, ownerID)
+				}
+			}
+		}
+	}
+	return tasks
 }
 
 ////////////////////////////////////////////////////////////
