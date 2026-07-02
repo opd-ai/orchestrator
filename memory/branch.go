@@ -29,5 +29,8 @@ func ensureMemoryBranch() error {
 }
 
 func bytesTrim(b []byte) []byte {
+	if len(b) == 0 {
+		return b
+	}
 	return []byte(string(b[:len(b)-1]))
 }

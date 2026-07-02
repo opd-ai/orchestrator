@@ -36,6 +36,7 @@ func simulatePatch(diff string, touchedFiles []string) error {
 
 // copyFilesToDir copies each file in paths into destDir, preserving relative
 // path structure under destDir. Non-existent files are skipped silently.
+// Paths that would escape destDir after Clean are also skipped (F-22).
 func copyFilesToDir(paths []string, destDir string) error {
 	for _, src := range paths {
 		data, err := os.ReadFile(src)
@@ -43,6 +44,10 @@ func copyFilesToDir(paths []string, destDir string) error {
 			continue // new file added by the patch — nothing to copy
 		}
 		dst := filepath.Join(destDir, src)
+		// Reject paths that resolve outside destDir (e.g. ../../etc/passwd).
+		if !strings.HasPrefix(filepath.Clean(dst), filepath.Clean(destDir)+string(filepath.Separator)) {
+			continue
+		}
 		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
 			return err
 		}

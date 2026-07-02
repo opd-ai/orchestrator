@@ -109,7 +109,7 @@ func containsWord(text, word string) bool {
 }
 
 func isIdentChar(c byte) bool {
-	return c == '_' || (c >= 'a' && c <= 'z') || (c >= '0' && c <= '9')
+	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9')
 }
 
 // extractBoundaryContext returns the source lines for the given FuncBoundary.

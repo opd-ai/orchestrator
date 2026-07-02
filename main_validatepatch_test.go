@@ -154,7 +154,10 @@ func TestValidatePatchRejectsLineDeltaCapPerFile(t *testing.T) {
 	maxPatchLines = 10
 	maxFilesTouched = 3
 
-	task := &Task{Description: "Update planner"}
+	// Two-file task: perFileLineDeltaCap = max(1, 10/2) = 5.
+	// The diff touches main.go with 6 changed lines (1 deletion + 5 additions),
+	// so it must be rejected by the per-file delta cap.
+	task := &Task{Description: "Update planner", Files: []string{"main.go", "other.go"}}
 	diff := strings.Join([]string{
 		"diff --git a/main.go b/main.go",
 		"--- a/main.go",
@@ -168,7 +171,7 @@ func TestValidatePatchRejectsLineDeltaCapPerFile(t *testing.T) {
 		"+new5",
 	}, "\n")
 
-	err := validatePatch(diff, nil, task)
+	err := validatePatch(diff, task.Files, task)
 	if err == nil || !strings.Contains(err.Error(), "line delta cap") {
 		t.Fatalf("expected line delta cap rejection, got %v", err)
 	}

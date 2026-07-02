@@ -98,7 +98,7 @@ func TestExecutionBlockFormat(t *testing.T) {
 		"TASK_ID: R3",
 		"FILES_ALLOWED: main.go",
 		"MAX_PATCH_LINES: 50",
-		"MAX_FILE_PATCH_LINES: 25",
+		"MAX_FILE_PATCH_LINES: 50",
 		"CONSTRAINTS:",
 		"FAIL_REASON:",
 	} {
