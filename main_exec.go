@@ -268,6 +268,8 @@ func attemptBuildFixRetries(
 
 		fixDiff := fixTask(task, context, buildFixHints(buildOut))
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
+			// Validation happens before append/apply, so a rejected fix diff is not
+			// included in appliedFixDiffs.
 			writeRejectedPatch(task.ID, fixDiff)
 			return appliedFixDiffs, false
 		}
@@ -304,7 +306,7 @@ func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, tr
 	// as possible and report every failure to operators in one error.
 	for i := len(appliedFixDiffs) - 1; i >= 0; i-- {
 		if err := revertPatch(appliedFixDiffs[i]); err != nil {
-			revertErrors = append(revertErrors, fmt.Sprintf("fix patch %d: %v", i, err))
+			revertErrors = append(revertErrors, fmt.Sprintf("fix patch %d: %v", len(appliedFixDiffs)-i, err))
 		}
 	}
 	if err := restoreFileSnapshots(trivialFixSnapshots); err != nil {
@@ -333,6 +335,8 @@ func tryTrivialFixes(
 	}
 	trivialFixSnapshots, err := snapshotFiles(touchedFiles)
 	if err != nil {
+		// Best-effort rollback: keep partial snapshots so we can still restore any
+		// files we captured successfully.
 		logError("trivial_fix_snapshot_failed", task.ID, err.Error())
 	}
 	if !applyTrivialFixes(touchedFiles, buildOut) {

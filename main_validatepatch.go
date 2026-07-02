@@ -162,7 +162,7 @@ func resolvePathFromExistingParent(path string) (string, error) {
 			return "", err
 		}
 		if parent == candidate {
-			return "", err
+			return "", fmt.Errorf("no existing parent found for %q", path)
 		}
 		candidate = parent
 	}
