@@ -92,6 +92,7 @@ func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error
 		return err
 	}
 	if len(task.Files) == 0 {
+		logInfo("no_file_allowlist", task.ID, "relying on path containment checks")
 		return nil
 	}
 	return validateAllowedTouchedFiles(touchedFiles, allowedFiles)

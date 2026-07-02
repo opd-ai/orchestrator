@@ -1,8 +1,10 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -32,6 +34,13 @@ type fileSnapshot struct {
 
 func runExecutionMode() {
 	start := time.Now()
+	if err := recoverExecutionJournal(); err != nil {
+		logError("journal_recovery_failed", "", err.Error())
+	}
+	if !resumeBranch {
+		ensureBranch()
+	}
+	ensureTasksFile()
 
 	// Inject memory into planner
 	memoryContext := memory.SummarizeForPlanner()
@@ -89,12 +98,6 @@ func execute() executionStats {
 	}
 	taskCache := loadTaskCache()
 
-	if !resumeBranch {
-		ensureBranch()
-	}
-
-	ensureTasksFile()
-
 	for {
 		if maxRuntime > 0 && time.Since(start) > maxRuntime {
 			logInfo("max_runtime_reached", "", "")
@@ -128,12 +131,21 @@ func execute() executionStats {
 		stats.tasksTotal++
 		logInfo("task_started", task.ID, task.Description)
 
-		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
-		deescalateModel(task.ID)         // revert escalated model from previous task
-		deescalateReviewMode()           // reset strategic review flag
-		maybeEscalateTier(task, &stats)  // check tier escalation triggers for this task
+		deescalateTier(task.ID)         // de-escalate from previous task (no-op on first)
+		deescalateModel(task.ID)        // revert escalated model from previous task
+		deescalateReviewMode()          // reset strategic review flag
+		maybeEscalateTier(task, &stats) // check tier escalation triggers for this task
 		taskRisk := scorePatchRisk("", task)
 		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
+		if err := ensureCleanWorkspace(task.ID); err != nil {
+			logError("workspace_reset_failed", task.ID, err.Error())
+			markBlocked(task)
+			stats.tasksBlocked++
+			stats.stability.recordBlock()
+			recordSubsystemOutcome(stats.subsystems, task, false)
+			saveTasks(tf)
+			continue
+		}
 
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
@@ -176,11 +188,27 @@ func execute() executionStats {
 				saveTasks(tf)
 				continue
 			}
+			if err := recordExecutionJournal(task.ID, journalStepPatched, diff); err != nil {
+				logError("journal_write_failed", task.ID, err.Error())
+			}
 		}
 
-		buildOut := build()
+		buildOut := ""
+		if dryRun {
+			logInfo("dry_run_build_skipped", task.ID, "")
+		} else {
+			buildOut = build()
+		}
 
 		if buildOut == "" {
+			if dryRun {
+				logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
+			}
+			if !dryRun {
+				if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
+					logError("journal_write_failed", task.ID, err.Error())
+				}
+			}
 			completeTask(task)
 			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
@@ -191,7 +219,9 @@ func execute() executionStats {
 			saveTasks(tf)
 			continue
 		}
-		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
+		if !dryRun {
+			resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
+		}
 	}
 }
 
@@ -284,6 +314,11 @@ func attemptBuildFixRetries(
 
 		buildOut = build()
 		if buildOut == "" {
+			if !dryRun {
+				if err := recordExecutionJournal(task.ID, journalStepBuilt, fixDiff); err != nil {
+					logError("journal_write_failed", task.ID, err.Error())
+				}
+			}
 			completeTask(task)
 			stats.recordSuccessfulPatch(fixDiff, task)
 			stats.tasksCompleted++
@@ -352,6 +387,9 @@ func tryTrivialFixes(
 		writeBuildFailure(task.ID, buildOut)
 		return buildOut, trivialFixSnapshots
 	}
+	if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
+		logError("journal_write_failed", task.ID, err.Error())
+	}
 
 	completeTask(task)
 	stats.recordSuccessfulPatch(diff, task)
@@ -412,6 +450,67 @@ func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 		return fmt.Errorf("restore failed: %s", strings.Join(restoreErrors, "; "))
 	}
 	return nil
+}
+
+func ensureCleanWorkspace(taskID string) error {
+	if dryRun || skipWorkspaceReset {
+		return nil
+	}
+	dirty, err := workspaceDirty()
+	if err != nil {
+		return err
+	}
+	if !dirty {
+		return nil
+	}
+
+	logInfo("dirty_workspace_detected", taskID, "")
+	logInfo("dirty_workspace_resetting", taskID, "resetting tracked and untracked files")
+	if out, err := exec.Command("git", "reset", "--hard", "HEAD").CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to reset workspace (git reset --hard HEAD): %w (%s)", err, sanitizeCommandOutput(out))
+	}
+	cleanArgs := []string{
+		"clean", "-fd",
+		"--exclude=" + tasksFile,
+		"--exclude=" + logFile,
+		"--exclude=" + journalFile,
+	}
+	if out, err := exec.Command("git", cleanArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to clean untracked workspace files (git clean): %w (%s)", err, sanitizeCommandOutput(out))
+	}
+	return nil
+}
+
+func workspaceDirty() (bool, error) {
+	dirty, err := commandMarksDirty("git", "diff", "--quiet", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	if dirty {
+		return true, nil
+	}
+	return commandMarksDirty("git", "diff", "--cached", "--quiet")
+}
+
+func commandMarksDirty(name string, args ...string) (bool, error) {
+	cmd := exec.Command(name, args...)
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
+}
+
+func sanitizeCommandOutput(out []byte) string {
+	clean := strings.TrimSpace(string(out))
+	clean = strings.ReplaceAll(clean, "\n", " | ")
+	if clean == "" {
+		return "no command output"
+	}
+	return clean
 }
 
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {

@@ -28,9 +28,15 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
+
+	"github.com/opd-ai/orchestrator/audit"
 )
+
+var goFileMentionRe = regexp.MustCompile(`\b[\w./-]+\.go\b`)
 
 func ensureTasksFile() {
 	if _, err := os.Stat(tasksFile); err == nil {
@@ -82,9 +88,13 @@ func ensureTasksFile() {
 			t.ID = fmt.Sprintf("%s%d", doc.Prefix, i+1)
 			t.Status = "pending"
 			t.Hash = hash
+			if len(t.Files) == 0 {
+				t.Files = extractMentionedGoFiles(t.Description)
+			}
 			allTasks = append(allTasks, t)
 		}
 	}
+	allTasks = mergeAuditFindings(allTasks, seen)
 
 	if len(allTasks) == 0 {
 		if docsFound && taskGenerationFailures > 0 {
@@ -103,14 +113,113 @@ func ensureTasksFile() {
 ////////////////////////////////////////////////////////////
 
 func nextExecutableTask(tf *TaskFile) *Task {
+	var selected *Task
 	for i := range tf.Tasks {
 		t := &tf.Tasks[i]
-		if t.Status == "pending" && depsSatisfied(tf, t) {
-			t.Status = "in_progress"
-			return t
+		if t.Status != "pending" || !depsSatisfied(tf, t) {
+			continue
+		}
+		if selected == nil || taskPriority(t) < taskPriority(selected) {
+			selected = t
 		}
 	}
-	return nil
+	if selected == nil {
+		return nil
+	}
+	selected.Status = "in_progress"
+	return selected
+}
+
+func mergeAuditFindings(allTasks []Task, seen map[string]bool) []Task {
+	if _, err := os.Stat(auditOutput); err != nil {
+		return allTasks
+	}
+	findings, err := audit.LoadFindings(auditOutput)
+	if err != nil {
+		logError("audit_findings_load_failed", "", err.Error())
+		return allTasks
+	}
+
+	nextID := nextTaskIDIndex(allTasks, "A")
+	for _, finding := range findings {
+		severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
+		if severity != "HIGH" && severity != "CRITICAL" {
+			continue
+		}
+		desc := fmt.Sprintf("[AUDIT-%s] %s", severity, strings.TrimSpace(finding.Description))
+		hash := hashString(desc)
+		if seen[hash] {
+			continue
+		}
+		seen[hash] = true
+		allTasks = append(allTasks, Task{
+			ID:          fmt.Sprintf("A%d", nextID),
+			Description: desc,
+			Status:      "pending",
+			Hash:        hash,
+		})
+		nextID++
+	}
+	return allTasks
+}
+
+func nextTaskIDIndex(tasks []Task, prefix string) int {
+	maxID := 0
+	for _, task := range tasks {
+		if !strings.HasPrefix(task.ID, prefix) {
+			continue
+		}
+		var current int
+		if _, err := fmt.Sscanf(task.ID[len(prefix):], "%d", &current); err == nil && current > maxID {
+			maxID = current
+		}
+	}
+	return maxID + 1
+}
+
+func taskPriority(task *Task) int {
+	upperDesc := strings.ToUpper(task.Description)
+	if strings.HasPrefix(upperDesc, "[AUDIT-HIGH]") ||
+		strings.HasPrefix(upperDesc, "[AUDIT-CRITICAL]") {
+		return 0
+	}
+	return 1
+}
+
+func extractMentionedGoFiles(text string) []string {
+	indices := goFileMentionRe.FindAllStringIndex(text, -1)
+	if len(indices) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(indices))
+	files := make([]string, 0, len(indices))
+	for _, idx := range indices {
+		start, end := idx[0], idx[1]
+		if (start > 0 && (text[start-1] == '.' || text[start-1] == '/')) ||
+			(end < len(text) && (text[end] == '.' || text[end] == '/')) {
+			continue
+		}
+		match := text[start:end]
+		clean := filepath.Clean(match)
+		if !isSafeMentionedGoFile(clean) {
+			continue
+		}
+		if seen[clean] {
+			continue
+		}
+		seen[clean] = true
+		files = append(files, clean)
+	}
+	sort.Strings(files)
+	return files
+}
+
+func isSafeMentionedGoFile(path string) bool {
+	if strings.TrimSpace(path) == "" || filepath.IsAbs(path) {
+		return false
+	}
+	clean := filepath.Clean(path)
+	return clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 func depsSatisfied(tf *TaskFile, t *Task) bool {
@@ -310,14 +419,14 @@ func saveTasks(tf TaskFile) {
 	os.WriteFile(tasksFile, b, 0o644)
 }
 
-func gitCommit(task *Task) {
+func gitCommit(task *Task) error {
 	if err := exec.Command("git", "add", ".").Run(); err != nil {
-		logError("git_add_failed", task.ID, err.Error())
-		return
+		return fmt.Errorf("git add: %w", err)
 	}
 	if err := exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run(); err != nil {
-		logError("git_commit_failed", task.ID, err.Error())
+		return fmt.Errorf("git commit: %w", err)
 	}
+	return nil
 }
 
 func filesTouched(diff string) []string {

@@ -15,19 +15,20 @@ import (
 
 var (
 	// Execution flags
-	modelName       string
-	llmEndpoint     string
-	maxRetries      int
-	maxPatchLines   int
-	maxFilesTouched int
-	maxRuntime      time.Duration
-	maxTasks        int
-	resumeBranch    bool
-	dryRun          bool
-	verbose         bool
-	selfEvolve      bool
-	speculativeMode bool
-	transformOnly   bool
+	modelName          string
+	llmEndpoint        string
+	maxRetries         int
+	maxPatchLines      int
+	maxFilesTouched    int
+	maxRuntime         time.Duration
+	maxTasks           int
+	resumeBranch       bool
+	dryRun             bool
+	verbose            bool
+	selfEvolve         bool
+	speculativeMode    bool
+	transformOnly      bool
+	skipWorkspaceReset bool
 
 	// Model role specialization flags (each defaults to --model when empty)
 	plannerModelName   string
@@ -96,6 +97,7 @@ func parseFlags() {
 	flag.BoolVar(&selfEvolve, "self-evolve", false, "Enable elevated mutation limits for orchestrator self-improvement")
 	flag.BoolVar(&speculativeMode, "speculative", false, "Generate multiple candidate diffs in parallel and pick the highest-confidence one")
 	flag.BoolVar(&transformOnly, "transform-only", false, "Require explicit change_type on every task; reject tasks without one")
+	flag.BoolVar(&skipWorkspaceReset, "skip-workspace-reset", false, "Skip automatic dirty-workspace reset before each task")
 	flag.StringVar(&plannerModelName, "planner-model", "", "Model for task planning (defaults to --model)")
 	flag.StringVar(&executorModelName, "executor-model", "", "Model for task execution (defaults to --model)")
 	flag.StringVar(&architectModelName, "architect-model", "", "Model for task splitting/architecture (defaults to --model)")
@@ -128,7 +130,15 @@ func ensureBranch() {
 
 func completeTask(task *Task) {
 	if !dryRun {
-		gitCommit(task)
+		if err := gitCommit(task); err != nil {
+			logError("git_commit_failed", task.ID, err.Error())
+			return
+		}
+		if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
+			logError("journal_write_failed", task.ID, err.Error())
+		} else if err := clearExecutionJournal(); err != nil {
+			logError("journal_clear_failed", task.ID, err.Error())
+		}
 	}
 	task.Status = "complete"
 	logInfo("task_complete", task.ID, "")

@@ -12,3 +12,15 @@ func SaveFindings(path string, findings []Finding) error {
 	}
 	return os.WriteFile(path, data, 0644)
 }
+
+func LoadFindings(path string) ([]Finding, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var findings []Finding
+	if err := json.Unmarshal(data, &findings); err != nil {
+		return nil, err
+	}
+	return findings, nil
+}
