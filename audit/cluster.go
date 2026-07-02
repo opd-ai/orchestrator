@@ -5,6 +5,7 @@ import (
 	"sort"
 )
 
+// ClusterPackages groups connected in-repo packages into deterministic audit clusters.
 func ClusterPackages(graph *DependencyGraph) []Cluster {
 	visited := make(map[string]bool)
 	var clusters []Cluster
@@ -36,6 +37,7 @@ func ClusterPackages(graph *DependencyGraph) []Cluster {
 	return clusters
 }
 
+// collectCluster walks dependencies from a root package and returns the cluster members and total LOC.
 func collectCluster(graph *DependencyGraph, root string, visited map[string]bool) ([]string, int) {
 	stack := []string{root}
 	var group []string
@@ -63,6 +65,7 @@ func collectCluster(graph *DependencyGraph, root string, visited map[string]bool
 	return group, totalLOC
 }
 
+// appendUnvisitedDeps pushes unseen dependency nodes onto the traversal stack.
 func appendUnvisitedDeps(stack, deps []string, visited map[string]bool) []string {
 	for _, dep := range deps {
 		if !visited[dep] {

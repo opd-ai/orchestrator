@@ -157,10 +157,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why eighth**: `go-stats-generator` reports 45.8 % function-level documentation coverage. The audit pass (`RunAPIPass`) flags undocumented exported symbols as findings. The orchestrator generates findings about its own packages, then discards them (Priority 3 gap). Raising coverage reduces self-generated audit noise and improves the context quality the model receives when editing documented functions.
 
-- [ ] Focus first on exported functions in `audit/` and `memory/` — these are the packages most likely to be used or imported externally. The `audit` package currently has 88 functions with low per-function doc coverage.
+- [x] Focus first on exported functions in `audit/` and `memory/` — these are the packages most likely to be used or imported externally. The `audit` package currently has 88 functions with low per-function doc coverage.
   - Reference: `go-stats-generator` output lists the 22 functions with `has_comment: false` that are exported; prioritise those.
-- [ ] For `main` package internal functions on the execution hot-path (`execute`, `getDiffForTask`, `resolveBuildFailure`, `ensureTasksFile`), add brief one-line doc comments explaining the contract (inputs, outputs, side effects) — not prose, just facts.
-- [ ] **Validation**: `go-stats-generator analyze . --skip-tests` reports overall function documentation coverage ≥ 70 %.
+- [x] For `main` package internal functions on the execution hot-path (`execute`, `getDiffForTask`, `resolveBuildFailure`, `ensureTasksFile`), add brief one-line doc comments explaining the contract (inputs, outputs, side effects) — not prose, just facts.
+- [x] **Validation**: `go-stats-generator analyze . --skip-tests` reports overall function documentation coverage ≥ 70 %.
 
 ---
 

@@ -50,6 +50,7 @@ type fileSnapshot struct {
 	data    []byte
 }
 
+// runExecutionMode restores state, executes pending tasks, and persists end-of-run memory summaries.
 func runExecutionMode() {
 	start := time.Now()
 	if err := recoverExecutionJournal(); err != nil {
@@ -95,6 +96,7 @@ func runExecutionMode() {
 	writeRunSummary(summary)
 }
 
+// copyCounts returns a shallow copy of a string-to-count map.
 func copyCounts(in map[string]int) map[string]int {
 	if len(in) == 0 {
 		return nil
@@ -308,6 +310,7 @@ func applyDiffToWorkspace(diff string, task *Task) error {
 	return checkPostPatchInvariants(diff, filesTouched(diff), task)
 }
 
+// resolveBuildFailure records a failed build, attempts local fixes, and splits the task if retries are exhausted.
 func resolveBuildFailure(
 	tf *TaskFile,
 	task *Task,
@@ -343,6 +346,7 @@ func resolveBuildFailure(
 	saveTasks(*tf)
 }
 
+// attemptBuildFixRetries iterates FIX prompts until the build passes or the retry budget is spent.
 func attemptBuildFixRetries(
 	tf *TaskFile,
 	task *Task,
@@ -398,6 +402,7 @@ func attemptBuildFixRetries(
 	return appliedFixDiffs, false
 }
 
+// revertBuildFailurePatches rolls back the original patch, applied fix diffs, and any trivial file edits.
 func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, trivialFixSnapshots map[string]fileSnapshot) error {
 	var revertErrors []string
 	// Best-effort rollback: keep attempting all reverts so we restore as much state
@@ -419,6 +424,7 @@ func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, tr
 	return nil
 }
 
+// tryTrivialFixes applies deterministic source edits before falling back to another LLM retry.
 func tryTrivialFixes(
 	tf *TaskFile,
 	task *Task,
@@ -461,6 +467,7 @@ func tryTrivialFixes(
 	return "", nil
 }
 
+// snapshotFiles captures file contents and modes so trivial fixes can be reverted safely.
 func snapshotFiles(paths []string) (map[string]fileSnapshot, error) {
 	snapshots := make(map[string]fileSnapshot, len(paths))
 	var snapshotErrors []string
@@ -491,6 +498,7 @@ func snapshotFiles(paths []string) (map[string]fileSnapshot, error) {
 	return snapshots, nil
 }
 
+// restoreFileSnapshots restores files to the captured snapshot state.
 func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 	if len(snapshots) == 0 {
 		return nil
@@ -513,6 +521,7 @@ func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 	return nil
 }
 
+// ensureCleanWorkspace resets tracked and untracked changes before starting a task when resets are enabled.
 func ensureCleanWorkspace(taskID string) error {
 	if dryRun || skipWorkspaceReset {
 		return nil
@@ -542,6 +551,7 @@ func ensureCleanWorkspace(taskID string) error {
 	return nil
 }
 
+// workspaceDirty reports whether tracked or staged changes are present in the repository.
 func workspaceDirty() (bool, error) {
 	dirty, err := commandMarksDirty("git", "diff", "--quiet", "HEAD")
 	if err != nil {
@@ -553,6 +563,7 @@ func workspaceDirty() (bool, error) {
 	return commandMarksDirty("git", "diff", "--cached", "--quiet")
 }
 
+// commandMarksDirty treats exit code 1 as a dirty-state signal for git diff-style commands.
 func commandMarksDirty(name string, args ...string) (bool, error) {
 	cmd := exec.Command(name, args...)
 	if err := cmd.Run(); err != nil {
@@ -565,6 +576,7 @@ func commandMarksDirty(name string, args ...string) (bool, error) {
 	return false, nil
 }
 
+// sanitizeCommandOutput flattens command output for single-line log messages.
 func sanitizeCommandOutput(out []byte) string {
 	clean := strings.TrimSpace(string(out))
 	clean = strings.ReplaceAll(clean, "\n", " | ")
@@ -574,6 +586,7 @@ func sanitizeCommandOutput(out []byte) string {
 	return clean
 }
 
+// recordSuccessfulPatch updates execution metrics after a patch completes successfully.
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	patchSize := lineCount(diff)
 	s.largestPatch = max(s.largestPatch, patchSize)
@@ -585,12 +598,14 @@ func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	s.stability.recordSuccess()
 }
 
+// trackHighRisk increments the high-risk counter when a patch crosses the configured risk threshold.
 func (s *executionStats) trackHighRisk(diff string, task *Task) {
 	if scorePatchRisk(diff, task).level >= RiskHigh {
 		s.highRiskPatches++
 	}
 }
 
+// recordBuildFailure buckets a build error by failure category for run summaries.
 func (s *executionStats) recordBuildFailure(buildOut string) {
 	failure := classifyBuildFailure(buildOut)
 	if failure == "" {
@@ -599,6 +614,7 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 	s.failurePatterns[failure]++
 }
 
+// recordRetryConvergence tracks repeated failure categories across consecutive fix attempts.
 func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) {
 	if retryCount < 2 || current == "" {
 		return

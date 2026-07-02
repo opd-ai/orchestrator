@@ -38,6 +38,7 @@ import (
 
 var goFileMentionRe = regexp.MustCompile(`\b[\w./-]+\.go\b`)
 
+// ensureTasksFile bootstraps tasks from planning documents and audit findings when tasks.json is absent.
 func ensureTasksFile() {
 	if _, err := os.Stat(tasksFile); err == nil {
 		return

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 )
 
+// SaveRun persists one run summary on the memory branch and trims old summaries.
 func SaveRun(summary RunSummary) error {
 	originalBranch, err := currentBranch()
 	if err != nil {
@@ -43,6 +44,7 @@ func SaveRun(summary RunSummary) error {
 	return checkoutBranch(originalBranch)
 }
 
+// trimOldRuns removes the oldest stored run summaries beyond the retention limit.
 func trimOldRuns() {
 	files, err := os.ReadDir(RunsDir)
 	if err != nil || len(files) <= MaxStoredRuns {

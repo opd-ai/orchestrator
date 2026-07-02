@@ -2,6 +2,7 @@ package memory
 
 import "fmt"
 
+// SummarizeForPlanner compresses persisted adaptive metrics into a short planner hint block.
 func SummarizeForPlanner() string {
 	m, err := LoadMetricsFromBranch()
 	if err != nil || m.TotalRuns == 0 {
@@ -17,6 +18,7 @@ func SummarizeForPlanner() string {
 	return joinSummaryLines(lines)
 }
 
+// baseSummaryLines builds the always-on metric lines for the planner summary.
 func baseSummaryLines(m AdaptiveMetrics) []string {
 	return []string{
 		"Recent adaptive metrics:",
@@ -27,6 +29,7 @@ func baseSummaryLines(m AdaptiveMetrics) []string {
 	}
 }
 
+// optionalFileSummaryLines adds file-focused summary lines when file metrics are available.
 func optionalFileSummaryLines(m AdaptiveMetrics) []string {
 	if len(m.TopProblemFiles) > 0 {
 		return []string{
@@ -36,6 +39,7 @@ func optionalFileSummaryLines(m AdaptiveMetrics) []string {
 	return nil
 }
 
+// optionalFailureSummaryLines adds failure-focused summary lines when failure metrics exist.
 func optionalFailureSummaryLines(m AdaptiveMetrics) []string {
 	if m.MostCommonFailure == "" && len(m.TopFailureTypes) == 0 {
 		return nil
@@ -52,6 +56,7 @@ func optionalFailureSummaryLines(m AdaptiveMetrics) []string {
 	return lines
 }
 
+// joinSummaryLines joins planner summary lines with newlines.
 func joinSummaryLines(lines []string) string {
 	out := ""
 	for i, line := range lines {
@@ -63,6 +68,7 @@ func joinSummaryLines(lines []string) string {
 	return out
 }
 
+// formatCountMetrics renders count metrics as a comma-separated label list.
 func formatCountMetrics(metrics []CountMetric) string {
 	out := ""
 	for i, metric := range metrics {

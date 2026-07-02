@@ -6,6 +6,7 @@ import (
 	"strings"
 )
 
+// RunArchitecturePass emits architecture findings derived from hotspots, isolation, dead code, and call centrality.
 func RunArchitecturePass(ctx AuditContext) []Finding {
 	findings := architectureHotspotFindings(ctx.Hotspots)
 	findings = append(findings, isolatedPackageFindings(ctx.CallDensity)...)
@@ -26,6 +27,7 @@ func RunArchitectureGraphChecks(graph *DependencyGraph, layers [][]string) []Fin
 	return findings
 }
 
+// deadFunctionFindings wraps dead-function candidates in a single low-severity finding.
 func deadFunctionFindings(names []string) []Finding {
 	if len(names) == 0 {
 		return nil
@@ -70,6 +72,7 @@ func highCentralityFindings(dag *FuncDAG) []Finding {
 	return findings
 }
 
+// RunAPIPass emits API-surface findings for exports, documentation gaps, and interface drift.
 func RunAPIPass(ctx AuditContext) []Finding {
 	findings := apiInterfaceFindings(ctx.Exports)
 	findings = append(findings, apiSurfaceFindings(ctx.Exports)...)
@@ -78,6 +81,7 @@ func RunAPIPass(ctx AuditContext) []Finding {
 	return findings
 }
 
+// architectureHotspotFinding converts one hotspot metric into an architecture finding when thresholds are exceeded.
 func architectureHotspotFinding(hotspot Hotspot) (Finding, bool) {
 	if hotspot.LOC <= 300 && hotspot.Complexity <= 15 {
 		return Finding{}, false
@@ -97,6 +101,7 @@ func architectureHotspotFinding(hotspot Hotspot) (Finding, bool) {
 	}, true
 }
 
+// architectureHotspotFindings collects findings for every hotspot that exceeds the configured thresholds.
 func architectureHotspotFindings(hotspots []Hotspot) []Finding {
 	var findings []Finding
 	for _, hotspot := range hotspots {
@@ -107,6 +112,7 @@ func architectureHotspotFindings(hotspots []Hotspot) []Finding {
 	return findings
 }
 
+// isolatedPackageFinding reports packages with no in-repo dependants outside the root module package.
 func isolatedPackageFinding(pkgPath string, inbound int) (Finding, bool) {
 	if inbound > 0 || strings.HasSuffix(pkgPath, "/orchestrator") {
 		return Finding{}, false
@@ -122,6 +128,7 @@ func isolatedPackageFinding(pkgPath string, inbound int) (Finding, bool) {
 	}, true
 }
 
+// isolatedPackageFindings evaluates every package inbound-count entry for isolation risk.
 func isolatedPackageFindings(callDensity map[string]int) []Finding {
 	var findings []Finding
 	for pkgPath, inbound := range callDensity {
@@ -132,6 +139,7 @@ func isolatedPackageFindings(callDensity map[string]int) []Finding {
 	return findings
 }
 
+// apiInterfaceFinding reports exported interfaces that widen the public compatibility surface.
 func apiInterfaceFinding(symbol SymbolInfo) (Finding, bool) {
 	if symbol.Kind != "interface" {
 		return Finding{}, false
@@ -147,6 +155,7 @@ func apiInterfaceFinding(symbol SymbolInfo) (Finding, bool) {
 	}, true
 }
 
+// apiInterfaceFindings gathers interface-surface findings from exported symbols.
 func apiInterfaceFindings(exports []SymbolInfo) []Finding {
 	var findings []Finding
 	for _, symbol := range exports {
@@ -157,6 +166,7 @@ func apiInterfaceFindings(exports []SymbolInfo) []Finding {
 	return findings
 }
 
+// apiSurfaceFinding reports packages whose exported symbol count exceeds the API surface threshold.
 func apiSurfaceFinding(pkgPath string, count int) (Finding, bool) {
 	if count <= 8 {
 		return Finding{}, false
@@ -172,6 +182,7 @@ func apiSurfaceFinding(pkgPath string, count int) (Finding, bool) {
 	}, true
 }
 
+// apiSurfaceFindings groups exports by package and emits API surface findings.
 func apiSurfaceFindings(exports []SymbolInfo) []Finding {
 	exportsByPackage := make(map[string]int)
 	for _, symbol := range exports {
@@ -202,6 +213,7 @@ func undocumentedExportFinding(symbol SymbolInfo) (Finding, bool) {
 	}, true
 }
 
+// undocumentedExportFindings returns findings for exported symbols that lack doc comments.
 func undocumentedExportFindings(exports []SymbolInfo) []Finding {
 	var findings []Finding
 	for _, sym := range exports {
@@ -267,6 +279,7 @@ func implementsAll(required []string, methodSet map[string]bool) bool {
 	return true
 }
 
+// interfaceDriftFindings reports exported interfaces that have no visible concrete implementor.
 func interfaceDriftFindings(exports []SymbolInfo) []Finding {
 	var findings []Finding
 	for _, sym := range exports {

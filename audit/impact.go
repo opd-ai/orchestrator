@@ -61,6 +61,7 @@ func AnalyzeFiles(paths []string) (*SymbolMap, error) {
 	return merged, firstErr
 }
 
+// newSymbolMap allocates empty function and struct indexes for impact analysis.
 func newSymbolMap() *SymbolMap {
 	return &SymbolMap{
 		Functions: make(map[string][]FuncBoundary),
@@ -68,6 +69,7 @@ func newSymbolMap() *SymbolMap {
 	}
 }
 
+// extractSymbols records function and struct declarations from a parsed file.
 func extractSymbols(fset *token.FileSet, node *ast.File, path string, sm *SymbolMap) {
 	for _, decl := range node.Decls {
 		switch d := decl.(type) {
@@ -98,6 +100,7 @@ func funcSymbolKey(receiver, name string) string {
 	return name
 }
 
+// funcBoundary captures the source location metadata for a function declaration.
 func funcBoundary(fset *token.FileSet, d *ast.FuncDecl, path string) FuncBoundary {
 	fb := FuncBoundary{
 		Name:      d.Name.Name,

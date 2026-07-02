@@ -18,6 +18,7 @@ func RunConcurrencyPass(ctx AuditContext) []Finding {
 	return append(concurrencyFindings(ctx.Imports), concurrencyASTFindings(ctx.Files)...)
 }
 
+// firstConcurrencyImport returns the first sync-related import used as a low-cost concurrency signal.
 func firstConcurrencyImport(imports []string) (string, bool) {
 	for _, imp := range imports {
 		if imp == "sync" || imp == "sync/atomic" {
@@ -27,6 +28,7 @@ func firstConcurrencyImport(imports []string) (string, bool) {
 	return "", false
 }
 
+// concurrencyFindings emits the import-based concurrency review reminder.
 func concurrencyFindings(imports []string) []Finding {
 	imp, ok := firstConcurrencyImport(imports)
 	if !ok {
@@ -146,6 +148,7 @@ func updateShadowed(shadowed map[string]bool, stmt ast.Stmt) {
 	}
 }
 
+// closureCapturesIdent reports whether a closure body references the named identifier.
 func closureCapturesIdent(body *ast.BlockStmt, name string) bool {
 	found := false
 	ast.Inspect(body, func(n ast.Node) bool {
@@ -158,6 +161,7 @@ func closureCapturesIdent(body *ast.BlockStmt, name string) bool {
 	return found
 }
 
+// loopVarNames extracts non-blank loop variable names from a for-loop initializer.
 func loopVarNames(init ast.Stmt) []string {
 	if init == nil {
 		return nil
@@ -175,6 +179,7 @@ func loopVarNames(init ast.Stmt) []string {
 	return names
 }
 
+// rangeVarNames extracts non-blank key and value names from a range statement.
 func rangeVarNames(stmt *ast.RangeStmt) []string {
 	var names []string
 	for _, expr := range []ast.Expr{stmt.Key, stmt.Value} {
@@ -204,6 +209,7 @@ func fileMutexWithoutDefer(fset *token.FileSet, node *ast.File, path string) []F
 	return findings
 }
 
+// funcMutexFindings flags Lock calls that are not followed by a deferred Unlock.
 func funcMutexFindings(fset *token.FileSet, fn *ast.FuncDecl, path string) []Finding {
 	var findings []Finding
 	stmts := fn.Body.List

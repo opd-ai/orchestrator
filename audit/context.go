@@ -10,6 +10,7 @@ import (
 	"strings"
 )
 
+// BuildAuditContext gathers the per-cluster exports, imports, files, and metrics used by audit passes.
 func BuildAuditContext(cluster Cluster, graph *DependencyGraph, needsFuncDAG bool) AuditContext {
 	exports, imports, callDensity, files := clusterInputs(cluster, graph)
 
@@ -37,6 +38,7 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph, needsFuncDAG boo
 	}
 }
 
+// FormatContextForLLM renders a compact audit summary for model prompts.
 func FormatContextForLLM(ctx AuditContext) string {
 	var b strings.Builder
 
@@ -56,6 +58,7 @@ func FormatContextForLLM(ctx AuditContext) string {
 	return b.String()
 }
 
+// inboundImportCount counts how many packages in the graph import the target package.
 func inboundImportCount(graph *DependencyGraph, target string) int {
 	count := 0
 	for _, imports := range graph.Edges {
@@ -196,6 +199,7 @@ func interfaceMethodNames(iface *ast.InterfaceType) []string {
 	return names
 }
 
+// exprString returns a simple string form for identifier, pointer, and selector expressions.
 func exprString(expr ast.Expr) string {
 	switch e := expr.(type) {
 	case *ast.Ident:
@@ -209,6 +213,7 @@ func exprString(expr ast.Expr) string {
 	}
 }
 
+// clusterInputs collects exports, imports, inbound counts, and Go files for a cluster.
 func clusterInputs(cluster Cluster, graph *DependencyGraph) ([]SymbolInfo, []string, map[string]int, []string) {
 	var exports []SymbolInfo
 	importSet := make(map[string]bool)
@@ -230,12 +235,14 @@ func clusterInputs(cluster Cluster, graph *DependencyGraph) ([]SymbolInfo, []str
 	return exports, sortedKeys(importSet), callDensity, sortedKeys(fileSet)
 }
 
+// addImports records each imported package path in the import set.
 func addImports(importSet map[string]bool, imports []string) {
 	for _, imp := range imports {
 		importSet[imp] = true
 	}
 }
 
+// addGoFiles adds Go source paths to the file set.
 func addGoFiles(fileSet map[string]bool, files []string) {
 	for _, file := range files {
 		if filepath.Ext(file) == ".go" {
@@ -244,6 +251,7 @@ func addGoFiles(fileSet map[string]bool, files []string) {
 	}
 }
 
+// sortedKeys returns the keys from a set map in ascending order.
 func sortedKeys(values map[string]bool) []string {
 	var keys []string
 	for key := range values {

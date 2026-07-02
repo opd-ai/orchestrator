@@ -16,6 +16,7 @@ type InvariantViolation struct {
 	Detail    string
 }
 
+// String formats an invariant violation for logs and reports.
 func (v InvariantViolation) String() string {
 	return fmt.Sprintf("%s in %s: %s", v.Invariant, v.File, v.Detail)
 }
@@ -39,6 +40,7 @@ func CheckFileInvariants(path string, reg *InvariantRegistry) []InvariantViolati
 	return violations
 }
 
+// checkFileLengthInvariant reports a violation when a file exceeds the configured line limit.
 func checkFileLengthInvariant(path string, lines int, reg *InvariantRegistry) []InvariantViolation {
 	for _, inv := range reg.Invariants {
 		if inv.Name == "max_file_length" && inv.MaxValue > 0 && lines > inv.MaxValue {
@@ -52,6 +54,7 @@ func checkFileLengthInvariant(path string, lines int, reg *InvariantRegistry) []
 	return nil
 }
 
+// checkFunctionInvariants checks function length and complexity limits for one file.
 func checkFunctionInvariants(path string, reg *InvariantRegistry) []InvariantViolation {
 	fset := token.NewFileSet()
 	f, err := parser.ParseFile(fset, path, nil, 0)

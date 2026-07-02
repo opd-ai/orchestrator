@@ -6,6 +6,7 @@ import (
 	"golang.org/x/tools/go/packages"
 )
 
+// LoadPackages loads package metadata and source files for the requested pattern.
 func LoadPackages(pattern string) (map[string]*PackageInfo, error) {
 	cfg := &packages.Config{
 		Mode: packages.NeedName |
@@ -44,6 +45,7 @@ func LoadPackages(pattern string) (map[string]*PackageInfo, error) {
 	return result, nil
 }
 
+// countLines returns the newline count for a source file.
 func countLines(file string) int {
 	data, err := os.ReadFile(file)
 	if err != nil {

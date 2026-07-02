@@ -16,6 +16,7 @@ const (
 // TASK SPLITTING
 ////////////////////////////////////////////////////////////
 
+// splitTask asks the planner model to decompose a blocked task into smaller atomic subtasks.
 func splitTask(tf *TaskFile, task *Task) {
 	prompt := fmt.Sprintf(`
 Split into smaller atomic tasks.
@@ -51,6 +52,7 @@ Task:
 	replaceTask(tf, task.ID, subtasks)
 }
 
+// replaceTask swaps one task ID for a new set of replacement tasks.
 func replaceTask(tf *TaskFile, id string, newTasks []Task) {
 	var updated []Task
 	for _, t := range tf.Tasks {
@@ -62,6 +64,7 @@ func replaceTask(tf *TaskFile, id string, newTasks []Task) {
 	tf.Tasks = updated
 }
 
+// enforceTaskGranularity splits broad tasks before execution when deterministic rules say they are too large.
 func enforceTaskGranularity(tf *TaskFile, task *Task) bool {
 	if len(task.Files) > 1 {
 		replaceTask(tf, task.ID, splitMultiFileTask(task))
@@ -105,6 +108,7 @@ func isAlreadySymbolTask(id string) bool {
 	return symbolTaskRe.MatchString(id)
 }
 
+// splitMultiFileTask turns a multi-file task into one pending subtask per file.
 func splitMultiFileTask(task *Task) []Task {
 	prefix := task.ID + "."
 	subtasks := make([]Task, 0, len(task.Files))
@@ -120,11 +124,13 @@ func splitMultiFileTask(task *Task) []Task {
 	return subtasks
 }
 
+// isOversizedTask reports whether a task description should be decomposed before execution.
 func isOversizedTask(description string) bool {
 	return len(description) > oversizedTaskDescriptionLimit ||
 		strings.Count(description, " and ") >= oversizedTaskConjunctionLimit
 }
 
+// splitOversizedDescription breaks a long description into smaller pending subtasks.
 func splitOversizedDescription(task *Task) []Task {
 	parts := regexp.MustCompile(`\s*(?:;|,|\band\b)\s*`).Split(task.Description, -1)
 	prefix := task.ID + "."
@@ -149,6 +155,7 @@ func splitOversizedDescription(task *Task) []Task {
 // EXECUTION
 ////////////////////////////////////////////////////////////
 
+// executeTask builds the execution prompt and dispatches it through the active execution strategy.
 func executeTask(task *Task, context string) string {
 	prompt := promptWithMemory(buildExecPrompt(task, context))
 	return dispatchExecution(task, context, prompt)
@@ -166,6 +173,7 @@ func dispatchExecution(task *Task, context, prompt string) string {
 	}
 }
 
+// buildExecPrompt assembles the unified-diff prompt for the main execution path.
 func buildExecPrompt(task *Task, context string) string {
 	constraints := []string{
 		"Modify only what is strictly necessary",
@@ -187,6 +195,7 @@ Return unified diff only.
 `, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
 }
 
+// fixTask builds a retry prompt that asks the model to correct a failed patch.
 func fixTask(task *Task, context, hints string) string {
 	constraints := []string{
 		"Return a corrected unified diff",
@@ -207,6 +216,7 @@ Return unified diff only.
 	return callLLMWithModel(promptWithMemory(prompt), 0.6, activeExecutorModel())
 }
 
+// executionBlock formats the structured execution metadata injected into EXECUTE and FIX prompts.
 func executionBlock(mode string, task *Task, constraints []string, failReason string) string {
 	var b strings.Builder
 	b.WriteString("EXECUTION_BLOCK\n")
@@ -219,6 +229,7 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	return strings.TrimSpace(b.String())
 }
 
+// writeOptionalFields appends optional execution metadata to a prompt block.
 func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, failReason string) {
 	if task.ChangeType != "" {
 		b.WriteString("CHANGE_TYPE: " + string(task.ChangeType) + "\n")

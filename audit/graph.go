@@ -45,6 +45,7 @@ type cycleState struct {
 	cycles  [][]string
 }
 
+// dfs performs cycle detection from a package node while tracking the active recursion stack.
 func (s *cycleState) dfs(path string, stack []string) {
 	s.visited[path] = true
 	s.onStack[path] = true
@@ -65,6 +66,7 @@ func (s *cycleState) dfs(path string, stack []string) {
 	s.onStack[path] = false
 }
 
+// extractCycle slices the current DFS stack down to the detected cycle.
 func extractCycle(stack []string, start string) []string {
 	for i, p := range stack {
 		if p == start {
@@ -76,6 +78,7 @@ func extractCycle(stack []string, start string) []string {
 	return nil
 }
 
+// sortedPackageKeys returns package paths in deterministic order.
 func sortedPackageKeys(pkgs map[string]*PackageInfo) []string {
 	keys := make([]string, 0, len(pkgs))
 	for k := range pkgs {
@@ -85,6 +88,7 @@ func sortedPackageKeys(pkgs map[string]*PackageInfo) []string {
 	return keys
 }
 
+// cycleFindings converts detected dependency cycles into architecture findings.
 func cycleFindings(cycles [][]string) []Finding {
 	var findings []Finding
 	for _, cycle := range cycles {

@@ -71,6 +71,7 @@ func nodesWithZeroInDegree(inDegree map[string]int, allNodes map[string]bool) []
 	return queue
 }
 
+// topoProcess consumes zero-in-degree nodes and builds a deterministic topological order.
 func topoProcess(queue []string, callers map[string][]string, inDegree map[string]int) []string {
 	var order []string
 	for len(queue) > 0 {
@@ -90,6 +91,7 @@ func topoProcess(queue []string, callers map[string][]string, inDegree map[strin
 	return order
 }
 
+// addFileToDAG parses one file and records its functions and call edges in the DAG.
 func addFileToDAG(dag *FuncDAG, path string) {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, path, nil, 0)
@@ -111,6 +113,7 @@ func addFileToDAG(dag *FuncDAG, path string) {
 	}
 }
 
+// collectCalls walks a function body and records calls made by that function.
 func collectCalls(dag *FuncDAG, fd *ast.FuncDecl, path string) {
 	caller := fd.Name.Name
 	ast.Inspect(fd.Body, func(n ast.Node) bool {
@@ -130,6 +133,7 @@ func collectCalls(dag *FuncDAG, fd *ast.FuncDecl, path string) {
 	})
 }
 
+// callName returns the callee name for identifier and selector call expressions.
 func callName(call *ast.CallExpr) string {
 	switch fn := call.Fun.(type) {
 	case *ast.Ident:
@@ -141,6 +145,7 @@ func callName(call *ast.CallExpr) string {
 	}
 }
 
+// appendUniq appends a value only when it is not already present.
 func appendUniq(s []string, v string) []string {
 	for _, x := range s {
 		if x == v {

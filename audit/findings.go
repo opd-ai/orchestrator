@@ -5,6 +5,7 @@ import (
 	"os"
 )
 
+// SaveFindings writes audit findings to disk as indented JSON.
 func SaveFindings(path string, findings []Finding) error {
 	data, err := json.MarshalIndent(findings, "", "  ")
 	if err != nil {
@@ -13,6 +14,7 @@ func SaveFindings(path string, findings []Finding) error {
 	return os.WriteFile(path, data, 0644)
 }
 
+// LoadFindings reads audit findings from an on-disk JSON file.
 func LoadFindings(path string) ([]Finding, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {

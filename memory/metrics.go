@@ -11,6 +11,7 @@ import (
 
 const topTrackedPatterns = 3
 
+// LoadMetrics reads adaptive metrics from the working tree metrics file when it exists.
 func LoadMetrics() (AdaptiveMetrics, error) {
 	var m AdaptiveMetrics
 	data, err := os.ReadFile(MetricsFile)
@@ -38,11 +39,13 @@ func LoadMetricsFromBranch() (AdaptiveMetrics, error) {
 	return m, nil
 }
 
+// SaveMetrics writes adaptive metrics to the working tree metrics file.
 func SaveMetrics(updated AdaptiveMetrics) error {
 	data, _ := json.MarshalIndent(updated, "", "  ")
 	return os.WriteFile(MetricsFile, data, 0644)
 }
 
+// UpdateMetrics merges the latest run summary into persisted adaptive metrics on the memory branch.
 func UpdateMetrics(summary RunSummary) error {
 	originalBranch, err := currentBranch()
 	if err != nil {
@@ -73,6 +76,7 @@ func UpdateMetrics(summary RunSummary) error {
 	return checkoutBranch(originalBranch)
 }
 
+// mergeSummaryMetrics folds one run summary into the running adaptive metrics aggregate.
 func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics {
 	total := float64(m.TotalRuns)
 
@@ -97,6 +101,7 @@ func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics 
 	return m
 }
 
+// mergeCountMaps adds positive counts from src into dst.
 func mergeCountMaps(dst, src map[string]int) map[string]int {
 	if len(src) == 0 {
 		return dst
@@ -113,6 +118,7 @@ func mergeCountMaps(dst, src map[string]int) map[string]int {
 	return dst
 }
 
+// topCountMetrics returns the highest-count metrics entries in descending order.
 func topCountMetrics(counts map[string]int, limit int) []CountMetric {
 	if len(counts) == 0 || limit <= 0 {
 		return nil

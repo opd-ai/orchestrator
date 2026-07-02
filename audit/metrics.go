@@ -7,6 +7,7 @@ import (
 	"slices"
 )
 
+// DetectHotspots reports large files whose size and control flow make them architecture hotspots.
 func DetectHotspots(files []string) []Hotspot {
 	var hotspots []Hotspot
 
@@ -28,6 +29,7 @@ func DetectHotspots(files []string) []Hotspot {
 	return hotspots
 }
 
+// estimateComplexity approximates file complexity by counting branch constructs in the AST.
 func estimateComplexity(file string) int {
 	fset := token.NewFileSet()
 	node, err := parser.ParseFile(fset, file, nil, 0)
