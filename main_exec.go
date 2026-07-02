@@ -620,7 +620,10 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 // fixRetrySettings returns the temperature and model to use for the next fix attempt, forcing the architect model when requested.
 func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
 	if forceArchitect {
-		return 0.8, roleModel(architectModelName)
+		if architectModelName != "" {
+			return 0.8, architectModelName
+		}
+		return 0.8, modelName
 	}
 	return tempForRetry(retryCount), activeExecutorModel()
 }
