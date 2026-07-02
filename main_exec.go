@@ -293,13 +293,15 @@ func attemptBuildFixRetries(
 
 func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string) error {
 	var revertErrors []string
+	// Best-effort rollback: keep attempting all reverts so we restore as much state
+	// as possible and report every failure to operators in one error.
 	for i := len(appliedFixDiffs) - 1; i >= 0; i-- {
 		if err := revertPatch(appliedFixDiffs[i]); err != nil {
-			revertErrors = append(revertErrors, err.Error())
+			revertErrors = append(revertErrors, fmt.Sprintf("fix patch %d: %v", i, err))
 		}
 	}
 	if err := revertPatch(originalDiff); err != nil {
-		revertErrors = append(revertErrors, err.Error())
+		revertErrors = append(revertErrors, fmt.Sprintf("original patch: %v", err))
 	}
 	if len(revertErrors) > 0 {
 		return fmt.Errorf("revert failed: %s", strings.Join(revertErrors, "; "))

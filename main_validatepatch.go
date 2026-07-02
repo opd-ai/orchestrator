@@ -81,8 +81,12 @@ func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error
 }
 
 func validateTouchedFilePaths(touchedFiles []string) error {
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve repository root: %w", err)
+	}
 	for _, file := range touchedFiles {
-		if err := validateTouchedFilePath(file); err != nil {
+		if err := validateTouchedFilePath(file, wd); err != nil {
 			return err
 		}
 	}
@@ -102,21 +106,15 @@ func validateAllowedTouchedFiles(touchedFiles, allowedFiles []string) error {
 	return nil
 }
 
-func validateTouchedFilePath(file string) error {
+func validateTouchedFilePath(file, wd string) error {
 	if strings.TrimSpace(file) == "" {
 		return errors.New("invalid touched file path")
 	}
-
-	clean := filepath.Clean(file)
-	if filepath.IsAbs(clean) {
+	if filepath.IsAbs(file) {
 		return fmt.Errorf("file %q escapes repository root", file)
 	}
 
-	wd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("resolve repository root: %w", err)
-	}
-
+	clean := filepath.Clean(file)
 	candidate := filepath.Join(wd, clean)
 	rel, err := filepath.Rel(wd, candidate)
 	if err != nil {

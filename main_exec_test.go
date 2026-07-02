@@ -64,15 +64,30 @@ func TestRevertBuildFailurePatchesRevertsFixesAndOriginal(t *testing.T) {
 	if err := applyPatch(originalDiff); err != nil {
 		t.Fatalf("apply original diff: %v", err)
 	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after original patch: %v", err)
+	}
+	if got := string(data); got != "b\n" {
+		t.Fatalf("expected original patch to update contents to b, got %q", got)
+	}
+
 	if err := applyPatch(fixDiff); err != nil {
 		t.Fatalf("apply fix diff: %v", err)
+	}
+	data, err = os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read after fix patch: %v", err)
+	}
+	if got := string(data); got != "c\n" {
+		t.Fatalf("expected fix patch to update contents to c, got %q", got)
 	}
 
 	if err := revertBuildFailurePatches(originalDiff, []string{fixDiff}); err != nil {
 		t.Fatalf("revert build failure patches: %v", err)
 	}
 
-	data, err := os.ReadFile(path)
+	data, err = os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read file: %v", err)
 	}
