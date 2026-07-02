@@ -472,6 +472,21 @@ func gitCommit(task *Task) error {
 	if err := exec.Command("git", "add", ".").Run(); err != nil {
 		return fmt.Errorf("git add: %w", err)
 	}
+	return gitCommitStaged(task)
+}
+
+func gitCommitFiles(task *Task, files []string) error {
+	if len(files) == 0 {
+		return fmt.Errorf("git add: no files to stage")
+	}
+	args := append([]string{"add", "--"}, files...)
+	if err := exec.Command("git", args...).Run(); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+	return gitCommitStaged(task)
+}
+
+func gitCommitStaged(task *Task) error {
 	if err := exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run(); err != nil {
 		return fmt.Errorf("git commit: %w", err)
 	}
