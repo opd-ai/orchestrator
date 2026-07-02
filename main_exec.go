@@ -192,9 +192,17 @@ func execute() executionStats {
 			}
 		}
 
-		buildOut := build()
+		buildOut := ""
+		if dryRun {
+			logInfo("dry_run_build_skipped", task.ID, "")
+		} else {
+			buildOut = build()
+		}
 
 		if buildOut == "" {
+			if dryRun {
+				logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
+			}
 			if !dryRun {
 				if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
 					logError("journal_write_failed", task.ID, err.Error())
@@ -210,7 +218,9 @@ func execute() executionStats {
 			saveTasks(tf)
 			continue
 		}
-		resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
+		if !dryRun {
+			resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
+		}
 	}
 }
 

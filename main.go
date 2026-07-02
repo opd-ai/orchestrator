@@ -29,8 +29,13 @@ import (
 	"os"
 	"os/exec"
 	"regexp"
+	"sort"
 	"strings"
+
+	"github.com/opd-ai/orchestrator/audit"
 )
+
+var goFileMentionRe = regexp.MustCompile(`\b[\w./-]+\.go\b`)
 
 func ensureTasksFile() {
 	if _, err := os.Stat(tasksFile); err == nil {
@@ -82,9 +87,13 @@ func ensureTasksFile() {
 			t.ID = fmt.Sprintf("%s%d", doc.Prefix, i+1)
 			t.Status = "pending"
 			t.Hash = hash
+			if len(t.Files) == 0 {
+				t.Files = extractMentionedGoFiles(t.Description)
+			}
 			allTasks = append(allTasks, t)
 		}
 	}
+	allTasks = mergeAuditFindings(allTasks, seen)
 
 	if len(allTasks) == 0 {
 		if docsFound && taskGenerationFailures > 0 {
@@ -103,14 +112,94 @@ func ensureTasksFile() {
 ////////////////////////////////////////////////////////////
 
 func nextExecutableTask(tf *TaskFile) *Task {
+	var selected *Task
 	for i := range tf.Tasks {
 		t := &tf.Tasks[i]
-		if t.Status == "pending" && depsSatisfied(tf, t) {
-			t.Status = "in_progress"
-			return t
+		if t.Status != "pending" || !depsSatisfied(tf, t) {
+			continue
+		}
+		if selected == nil || taskPriority(t) < taskPriority(selected) {
+			selected = t
 		}
 	}
-	return nil
+	if selected == nil {
+		return nil
+	}
+	selected.Status = "in_progress"
+	return selected
+}
+
+func mergeAuditFindings(allTasks []Task, seen map[string]bool) []Task {
+	if _, err := os.Stat(auditOutput); err != nil {
+		return allTasks
+	}
+	findings, err := audit.LoadFindings(auditOutput)
+	if err != nil {
+		logError("audit_findings_load_failed", "", err.Error())
+		return allTasks
+	}
+
+	nextID := nextTaskIDIndex(allTasks, "A")
+	for _, finding := range findings {
+		severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
+		if severity != "HIGH" && severity != "CRITICAL" {
+			continue
+		}
+		desc := fmt.Sprintf("[AUDIT-%s] %s", severity, strings.TrimSpace(finding.Description))
+		hash := hashString(desc)
+		if seen[hash] {
+			continue
+		}
+		seen[hash] = true
+		allTasks = append(allTasks, Task{
+			ID:          fmt.Sprintf("A%d", nextID),
+			Description: desc,
+			Status:      "pending",
+			Hash:        hash,
+		})
+		nextID++
+	}
+	return allTasks
+}
+
+func nextTaskIDIndex(tasks []Task, prefix string) int {
+	maxID := 0
+	for _, task := range tasks {
+		if !strings.HasPrefix(task.ID, prefix) {
+			continue
+		}
+		var current int
+		if _, err := fmt.Sscanf(task.ID[len(prefix):], "%d", &current); err == nil && current > maxID {
+			maxID = current
+		}
+	}
+	return maxID + 1
+}
+
+func taskPriority(task *Task) int {
+	if strings.HasPrefix(strings.ToUpper(task.Description), "[AUDIT-HIGH]") ||
+		strings.HasPrefix(strings.ToUpper(task.Description), "[AUDIT-CRITICAL]") {
+		return 0
+	}
+	return 1
+}
+
+func extractMentionedGoFiles(text string) []string {
+	matches := goFileMentionRe.FindAllString(text, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+	seen := make(map[string]bool, len(matches))
+	files := make([]string, 0, len(matches))
+	for _, match := range matches {
+		if seen[match] {
+			continue
+		}
+		seen[match] = true
+		files = append(files, match)
+	}
+	sort.Strings(files)
+	return files
 }
 
 func depsSatisfied(tf *TaskFile, t *Task) bool {

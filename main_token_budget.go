@@ -1,33 +1,18 @@
 package main
 
-import "strings"
+const (
+	maxPromptTokens = 1500
+	maxPromptChars  = maxPromptTokens * 4
+)
 
-const maxPromptTokens = 1500
-
+// enforceTokenBudget approximates model token limits using a character cap.
+// For Go-heavy prompts, ~4 characters per token is a conservative heuristic,
+// so 1500 tokens maps to ~6000 characters. This can still drift from true BPE
+// counts; if stricter limits are required, use a model-specific tokenizer.
 func enforceTokenBudget(prompt string) string {
-	tokenCount := 0
-	inToken := false
-	cut := len(prompt)
-
-	for i, r := range prompt {
-		if strings.ContainsRune(" \t\r\n\f\v", r) {
-			inToken = false
-			continue
-		}
-		if inToken {
-			continue
-		}
-
-		tokenCount++
-		if tokenCount > maxPromptTokens {
-			cut = i
-			break
-		}
-		inToken = true
-	}
-
-	if tokenCount <= maxPromptTokens {
+	runes := []rune(prompt)
+	if len(runes) <= maxPromptChars {
 		return prompt
 	}
-	return prompt[:cut]
+	return string(runes[:maxPromptChars])
 }

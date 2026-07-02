@@ -101,11 +101,11 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why third**: The README describes audit as producing findings that "guide task prioritisation", but `ensureTasksFile` never reads `audit_findings.json`. The audit→plan workflow is entirely absent, making `--audit` a diagnostic-only tool rather than a planning accelerator.
 
-- [ ] In `ensureTasksFile` (or a new `mergeAuditFindings()` called immediately after), check if `audit_findings.json` exists. If it does, parse its `[]audit.Finding` and inject HIGH/CRITICAL severity findings as additional task descriptions into the task list, tagged with prefix `A`.
+- [x] In `ensureTasksFile` (or a new `mergeAuditFindings()` called immediately after), check if `audit_findings.json` exists. If it does, parse its `[]audit.Finding` and inject HIGH/CRITICAL severity findings as additional task descriptions into the task list, tagged with prefix `A`.
   - Reference: `main.go:ensureTasksFile`, `audit/findings.go:SaveFindings` (reverse: `LoadFindings`). Finding severity is already present in `audit.Finding.Severity`.
-- [ ] De-duplicate injected audit tasks against existing tasks by content hash (the same mechanism already used for planning-document tasks).
-- [ ] Re-order the task queue so tasks derived from HIGH/CRITICAL audit findings precede NORMAL tasks. Insert the ordering step in `nextExecutableTask` or as a priority field on `Task`.
-- [ ] **Validation**: run `--audit`, then run normally; confirm `orchestrator.log` contains tasks whose descriptions reference the audit finding messages.
+- [x] De-duplicate injected audit tasks against existing tasks by content hash (the same mechanism already used for planning-document tasks).
+- [x] Re-order the task queue so tasks derived from HIGH/CRITICAL audit findings precede NORMAL tasks. Insert the ordering step in `nextExecutableTask` or as a priority field on `Task`.
+- [x] **Validation**: run `--audit`, then run normally; confirm `orchestrator.log` contains tasks whose descriptions reference the audit finding messages.
 
 ---
 
@@ -113,10 +113,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why fourth**: Dry-run is described as a safe preview mode, but `build()` is called unconditionally on the unmodified working tree. Any pre-existing compilation error causes every dry-run task to report as failed. This makes dry-run unusable for its primary use case: validating a plan against a broken codebase.
 
-- [ ] In `main_exec.go`, gate `buildOut := build()` (line ≈180) on `!dryRun`. In dry-run mode, set `buildOut = ""` unconditionally and log `"dry_run_build_skipped"`.
+- [x] In `main_exec.go`, gate `buildOut := build()` (line ≈180) on `!dryRun`. In dry-run mode, set `buildOut = ""` unconditionally and log `"dry_run_build_skipped"`.
   - Also gate `resolveBuildFailure(...)` on `!dryRun` — the fix loop has no meaning without an applied patch.
-- [ ] Update the dry-run log summary to report: `"patch_generated": true`, `"patch_valid": true`, `"would_apply": true` for passing tasks.
-- [ ] **Validation**: introduce a syntax error in the target repo, run `--dry-run`, confirm all tasks are reported as passing (no spurious build failures).
+- [x] Update the dry-run log summary to report: `"patch_generated": true`, `"patch_valid": true`, `"would_apply": true` for passing tasks.
+- [x] **Validation**: introduce a syntax error in the target repo, run `--dry-run`, confirm all tasks are reported as passing (no spurious build failures).
 
 ---
 
@@ -124,10 +124,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why fifth**: `validateTouchedFiles` returns `nil` (skips allowlist) when `task.Files` is empty, which is the default for all planning-document-derived tasks. The path-containment check (`validateTouchedFilePaths`) prevents escape outside the repo root, partially mitigating the risk, but the per-task allowlist — a stated safety guarantee — is never consulted for the majority of tasks.
 
-- [ ] When `task.Files` is empty and `task.SymbolHint` is also empty, log a warning `"no_file_allowlist"` and rely on path-containment only (the current behaviour). This is safe but should be explicit.
-- [ ] During task generation in `ensureTasksFile` / `tasksFromSymbolMap`, populate `task.Files` from the filenames mentioned in the planning document source line that generated the task. Even a best-effort extraction (regex `\b\w+\.go\b`) is better than an empty allowlist.
+- [x] When `task.Files` is empty and `task.SymbolHint` is also empty, log a warning `"no_file_allowlist"` and rely on path-containment only (the current behaviour). This is safe but should be explicit.
+- [x] During task generation in `ensureTasksFile` / `tasksFromSymbolMap`, populate `task.Files` from the filenames mentioned in the planning document source line that generated the task. Even a best-effort extraction (regex `\b\w+\.go\b`) is better than an empty allowlist.
   - Reference: `main_symtask.go:tasksFromSymbolMap` already populates `task.Files` for symbol-level tasks; apply the same logic to document-derived tasks in `main_tasks.go`.
-- [ ] **Validation**: generate a task from `GOALS.md` that mentions a specific file; confirm `validatePatch` rejects a diff touching a different file.
+- [x] **Validation**: generate a task from `GOALS.md` that mentions a specific file; confirm `validatePatch` rejects a diff touching a different file.
 
 ---
 
@@ -135,9 +135,9 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why sixth**: `enforceTokenBudget` counts whitespace-delimited words, but Go source code has many single-character tokens, identifier concatenations, and punctuation that BPE tokenisers count differently. A 1500-word budget on Go source regularly exceeds 2000–3000 BPE tokens, causing silent `context_length_exceeded` errors on 4k-context models (common in the Qwen2.5-7B range).
 
-- [ ] Replace the word-count implementation in `main_token_budget.go` with a character-count budget. At ~4 characters per token for Go source (a conservative estimate), `maxPromptTokens = 1500` translates to `maxPromptChars = 6000`. This matches the existing `compressPrompt` ceiling and is simple to implement without adding a dependency.
-- [ ] Document the approximation and its known failure modes in a comment above `enforceTokenBudget`. Note that `tiktoken-go` or a model-specific tokeniser would give exact counts if accurate budgeting becomes a priority.
-- [ ] **Validation**: construct a prompt just above 6000 characters; confirm `enforceTokenBudget` truncates it, and that the truncated form does not cause `context_length_exceeded` on a 4k-context model.
+- [x] Replace the word-count implementation in `main_token_budget.go` with a character-count budget. At ~4 characters per token for Go source (a conservative estimate), `maxPromptTokens = 1500` translates to `maxPromptChars = 6000`. This matches the existing `compressPrompt` ceiling and is simple to implement without adding a dependency.
+- [x] Document the approximation and its known failure modes in a comment above `enforceTokenBudget`. Note that `tiktoken-go` or a model-specific tokeniser would give exact counts if accurate budgeting becomes a priority.
+- [x] **Validation**: construct a prompt just above 6000 characters; confirm `enforceTokenBudget` truncates it, and that the truncated form does not cause `context_length_exceeded` on a 4k-context model.
 
 ---
 
