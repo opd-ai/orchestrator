@@ -270,3 +270,57 @@ func TestEnsureCleanWorkspaceResetsAndPreservesExcludedFiles(t *testing.T) {
 		}
 	}
 }
+
+func TestEnsureCleanWorkspaceResetsStagedChanges(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+
+	initGitRepo(t, tmpDir)
+	if err := os.WriteFile("staged.txt", []byte("original\n"), 0o644); err != nil {
+		t.Fatalf("write staged file: %v", err)
+	}
+	runCmd(t, "git", "add", "staged.txt")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	if err := os.WriteFile("staged.txt", []byte("modified\n"), 0o644); err != nil {
+		t.Fatalf("write modified file: %v", err)
+	}
+	runCmd(t, "git", "add", "staged.txt")
+
+	dirty, err := workspaceDirty()
+	if err != nil || !dirty {
+		t.Fatalf("expected dirty workspace for staged changes, dirty=%v err=%v", dirty, err)
+	}
+
+	prevDryRun, prevSkip := dryRun, skipWorkspaceReset
+	dryRun, skipWorkspaceReset = false, false
+	t.Cleanup(func() {
+		dryRun, skipWorkspaceReset = prevDryRun, prevSkip
+	})
+
+	if err := ensureCleanWorkspace("T1"); err != nil {
+		t.Fatalf("ensureCleanWorkspace: %v", err)
+	}
+
+	data, err := os.ReadFile("staged.txt")
+	if err != nil {
+		t.Fatalf("read staged file: %v", err)
+	}
+	if string(data) != "original\n" {
+		t.Fatalf("expected staged file reset to original, got %q", data)
+	}
+
+	dirty, err = workspaceDirty()
+	if err != nil || dirty {
+		t.Fatalf("expected clean workspace after reset, dirty=%v err=%v", dirty, err)
+	}
+}

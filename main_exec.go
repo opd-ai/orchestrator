@@ -466,8 +466,8 @@ func ensureCleanWorkspace(taskID string) error {
 
 	logInfo("dirty_workspace_detected", taskID, "")
 	logInfo("dirty_workspace_resetting", taskID, "resetting tracked and untracked files")
-	if out, err := exec.Command("git", "checkout", "--", ".").CombinedOutput(); err != nil {
-		return fmt.Errorf("failed to reset tracked workspace (git checkout -- .): %w (%s)", err, sanitizeCommandOutput(out))
+	if out, err := exec.Command("git", "reset", "--hard", "HEAD").CombinedOutput(); err != nil {
+		return fmt.Errorf("failed to reset workspace (git reset --hard HEAD): %w (%s)", err, sanitizeCommandOutput(out))
 	}
 	cleanArgs := []string{
 		"clean", "-fd",

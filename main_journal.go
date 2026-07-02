@@ -111,7 +111,9 @@ func recoverExecutionJournal() error {
 				return err
 			}
 		}
-		_ = updateTaskStatus(entry.TaskID, "pending")
+		if err := updateTaskStatus(entry.TaskID, "pending"); err != nil {
+			return err
+		}
 		logInfo("journal_recovered_reverted", entry.TaskID, "")
 		return clearExecutionJournal()
 	case journalStepBuilt:
@@ -119,10 +121,10 @@ func recoverExecutionJournal() error {
 		if err != nil {
 			return err
 		}
-		if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
+		if err := gitCommit(task); err != nil {
 			return err
 		}
-		if err := gitCommit(task); err != nil {
+		if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
 			return err
 		}
 		if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {

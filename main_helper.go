@@ -132,12 +132,12 @@ func completeTask(task *Task) {
 	if !dryRun {
 		if err := gitCommit(task); err != nil {
 			logError("git_commit_failed", task.ID, err.Error())
-		} else {
-			if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
-				logError("journal_write_failed", task.ID, err.Error())
-			} else if err := clearExecutionJournal(); err != nil {
-				logError("journal_clear_failed", task.ID, err.Error())
-			}
+			return
+		}
+		if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
+			logError("journal_write_failed", task.ID, err.Error())
+		} else if err := clearExecutionJournal(); err != nil {
+			logError("journal_clear_failed", task.ID, err.Error())
 		}
 	}
 	task.Status = "complete"

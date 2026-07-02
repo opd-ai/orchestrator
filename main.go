@@ -203,11 +203,12 @@ func extractMentionedGoFiles(text string) []string {
 		if !isSafeMentionedGoFile(match) {
 			continue
 		}
-		if seen[match] {
+		clean := filepath.Clean(match)
+		if seen[clean] {
 			continue
 		}
-		seen[match] = true
-		files = append(files, match)
+		seen[clean] = true
+		files = append(files, clean)
 	}
 	sort.Strings(files)
 	return files

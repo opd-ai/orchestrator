@@ -156,8 +156,10 @@ func TestRecoverExecutionJournalBuiltCommitsPatch(t *testing.T) {
 	if !strings.Contains(logOut, "Task T1: change sample") {
 		t.Fatalf("expected recovery commit message, got %q", logOut)
 	}
+	// tasks.json is updated after gitCommit to avoid marking complete on a failed
+	// commit, so it may remain modified in the working tree.
 	statusOut := runCmd(t, "git", "status", "--short")
-	if strings.TrimSpace(statusOut) != "" {
-		t.Fatalf("expected clean git status, got %q", statusOut)
+	if strings.Contains(statusOut, "sample.txt") {
+		t.Fatalf("expected sample.txt committed, got git status %q", statusOut)
 	}
 }
