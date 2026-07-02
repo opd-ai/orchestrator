@@ -29,7 +29,7 @@ func TestEnforceTaskGranularitySplitsOversizedTask(t *testing.T) {
 	desc := "Update retry logic and tighten patch validation and improve error hint formatting"
 	tf := TaskFile{
 		Tasks: []Task{
-			// Use empty Files so symbol-split path is skipped.
+			// Empty Files ensures the symbol-split path is skipped and description-based splitting is tested.
 			{ID: "R2", Description: desc, Status: "pending"},
 		},
 	}

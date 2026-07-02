@@ -1,7 +1,6 @@
 package audit
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -140,5 +139,4 @@ func TestConcurrencyPass_ImportHeuristicRetained(t *testing.T) {
 	if !found {
 		t.Error("expected concurrency_primitive_usage finding to be retained")
 	}
-	_ = strings.Contains // silence import lint
 }

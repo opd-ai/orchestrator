@@ -80,9 +80,9 @@ func goroutineCaptureFindings(fset *token.FileSet, body *ast.BlockStmt, loopVars
 	}
 	var findings []Finding
 	shadowed := make(map[string]bool)
-	for i, stmt := range body.List {
+	for _, stmt := range body.List {
 		updateShadowed(shadowed, stmt)
-		f, ok := goCaptureFinding(fset, body.List[:i], stmt, loopVars, shadowed, path)
+		f, ok := goCaptureFinding(fset, stmt, loopVars, shadowed, path)
 		if ok {
 			findings = append(findings, f)
 		}
@@ -92,7 +92,7 @@ func goroutineCaptureFindings(fset *token.FileSet, body *ast.BlockStmt, loopVars
 
 // goCaptureFinding checks whether a single statement is a goroutine that
 // captures an unshadowed loop variable.
-func goCaptureFinding(fset *token.FileSet, before []ast.Stmt, stmt ast.Stmt, loopVars []string, shadowed map[string]bool, path string) (Finding, bool) {
+func goCaptureFinding(fset *token.FileSet, stmt ast.Stmt, loopVars []string, shadowed map[string]bool, path string) (Finding, bool) {
 	goStmt, ok := stmt.(*ast.GoStmt)
 	if !ok {
 		return Finding{}, false
@@ -101,7 +101,6 @@ func goCaptureFinding(fset *token.FileSet, before []ast.Stmt, stmt ast.Stmt, loo
 	if !ok {
 		return Finding{}, false
 	}
-	_ = before
 	for _, name := range loopVars {
 		if !shadowed[name] && closureCapturesIdent(fn.Body, name) {
 			pos := fset.Position(goStmt.Pos())
