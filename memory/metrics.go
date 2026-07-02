@@ -86,6 +86,15 @@ func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics 
 	m.AvgRetryCount =
 		((m.AvgRetryCount * total) +
 			summary.AvgRetries) / (total + 1)
+	m.AvgInferenceLatencyMs =
+		((m.AvgInferenceLatencyMs * total) +
+			summary.AvgInferenceLatencyMs) / (total + 1)
+	m.AvgPatchConfidence =
+		((m.AvgPatchConfidence * total) +
+			summary.AvgPatchConfidence) / (total + 1)
+	m.AvgPatchRisk =
+		((m.AvgPatchRisk * total) +
+			summary.AvgPatchRisk) / (total + 1)
 	if summary.MostModifiedFile != "" {
 		m.MostProblematicFile = summary.MostModifiedFile
 	}

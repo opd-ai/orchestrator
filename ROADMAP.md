@@ -223,18 +223,18 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: Build failure artifacts are written as raw text (`.log` files), and inference latency is not measured anywhere. Without latency data, it is impossible to determine whether throughput is bottlenecked by model inference time or by patch-application / build overhead. Without structured failure artifacts, identifying which error categories repeat across runs requires log grep and is not feed-able to the adaptive metrics system.
 
-- [ ] In `callLLMWithModel` (`main.go`), wrap the `http.Post` call with `start := time.Now()` / `latencyMs := time.Since(start).Milliseconds()` and include `latency_ms=%d` in the existing `token_usage` log event.
+- [x] In `callLLMWithModel` (`main.go`), wrap the `http.Post` call with `start := time.Now()` / `latencyMs := time.Since(start).Milliseconds()` and include `latency_ms=%d` in the existing `token_usage` log event.
   - Reference: `main.go:270-298`; the log event already records model, prompt tokens, and completion tokens.
-- [ ] Add `AvgInferenceLatencyMs float64` to `memory.RunSummary` and `memory.AdaptiveMetrics` in `memory/types.go`. Feed the per-call latency into `executionStats` during the run and roll it into the `RunSummary` at completion in `runExecutionMode`.
-- [ ] Replace the raw-text build failure artifact in `writeBuildFailure` (`main_observability.go`) with a JSON envelope:
+- [x] Add `AvgInferenceLatencyMs float64` to `memory.RunSummary` and `memory.AdaptiveMetrics` in `memory/types.go`. Feed the per-call latency into `executionStats` during the run and roll it into the `RunSummary` at completion in `runExecutionMode`.
+- [x] Replace the raw-text build failure artifact in `writeBuildFailure` (`main_observability.go`) with a JSON envelope:
   ```
   { "task_id": "…", "timestamp": "…", "retry": N, "error_category": "…", "error_lines": ["…"], "raw": "…" }
   ```
   Write to `logs/build_failures/<task_id>.json` (keep the existing `.log` path as an alias or remove it). Parse `classifyBuildFailure` and `compilerErrorLines` to populate the structured fields.
   - Reference: `main_observability.go:writeBuildFailure`; `main_util.go:classifyBuildFailure`, `compilerErrorLines`.
-- [ ] Persist `AvgPatchConfidence` and `AvgPatchRisk` to `AdaptiveMetrics`, fed from `evaluatePatchConfidence` and `scorePatchRisk` in `recordSuccessfulPatch`.
+- [x] Persist `AvgPatchConfidence` and `AvgPatchRisk` to `AdaptiveMetrics`, fed from `evaluatePatchConfidence` and `scorePatchRisk` in `recordSuccessfulPatch`.
   - Reference: `main_exec.go:recordSuccessfulPatch` already calls both but discards the scores.
-- [ ] **Validation**: after 3 runs, confirm `adaptive_metrics.json` contains `avg_inference_latency_ms`; confirm `logs/build_failures/` contains `.json` files parseable by `encoding/json`. Run `go test -race ./...`.
+- [x] **Validation**: after 3 runs, confirm `adaptive_metrics.json` contains `avg_inference_latency_ms`; confirm `logs/build_failures/` contains `.json` files parseable by `encoding/json`. Run `go test -race ./...`.
 
 ---
 

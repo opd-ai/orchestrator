@@ -25,6 +25,9 @@ type RunSummary struct {
 	RetryConvergenceAlerts  int            `json:"retry_convergence_alerts"`
 	FailurePatterns         map[string]int `json:"failure_patterns,omitempty"`
 	ModifiedFiles           map[string]int `json:"modified_files,omitempty"`
+	AvgInferenceLatencyMs   float64        `json:"avg_inference_latency_ms,omitempty"`
+	AvgPatchConfidence      float64        `json:"avg_patch_confidence,omitempty"`
+	AvgPatchRisk            float64        `json:"avg_patch_risk,omitempty"`
 }
 
 type CountMetric struct {
@@ -33,13 +36,16 @@ type CountMetric struct {
 }
 
 type AdaptiveMetrics struct {
-	AvgSuccessPatchSize float64        `json:"avg_success_patch_size"`
-	AvgRetryCount       float64        `json:"avg_retry_count"`
-	MostProblematicFile string         `json:"most_problematic_file"`
-	MostCommonFailure   string         `json:"most_common_failure"`
-	TotalRuns           int            `json:"total_runs"`
-	FailureCounts       map[string]int `json:"failure_counts,omitempty"`
-	ProblemFileCounts   map[string]int `json:"problem_file_counts,omitempty"`
-	TopFailureTypes     []CountMetric  `json:"top_failure_types,omitempty"`
-	TopProblemFiles     []CountMetric  `json:"top_problem_files,omitempty"`
+	AvgSuccessPatchSize   float64        `json:"avg_success_patch_size"`
+	AvgRetryCount         float64        `json:"avg_retry_count"`
+	MostProblematicFile   string         `json:"most_problematic_file"`
+	MostCommonFailure     string         `json:"most_common_failure"`
+	TotalRuns             int            `json:"total_runs"`
+	FailureCounts         map[string]int `json:"failure_counts,omitempty"`
+	ProblemFileCounts     map[string]int `json:"problem_file_counts,omitempty"`
+	TopFailureTypes       []CountMetric  `json:"top_failure_types,omitempty"`
+	TopProblemFiles       []CountMetric  `json:"top_problem_files,omitempty"`
+	AvgInferenceLatencyMs float64        `json:"avg_inference_latency_ms,omitempty"`
+	AvgPatchConfidence    float64        `json:"avg_patch_confidence,omitempty"`
+	AvgPatchRisk          float64        `json:"avg_patch_risk,omitempty"`
 }

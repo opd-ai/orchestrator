@@ -6,24 +6,28 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/opd-ai/orchestrator/memory"
 )
 
 type executionStats struct {
-	tasksTotal         int
-	tasksCompleted     int
-	tasksBlocked       int
-	totalRetries       int
-	largestPatch       int
-	highRiskPatches    int
-	modifiedFiles      map[string]int
-	failurePatterns    map[string]int
-	convergenceSamples int
-	convergenceAlerts  int
-	stability          stabilityMonitor
-	subsystems         map[string]*subsystemMetrics
+	tasksTotal           int
+	tasksCompleted       int
+	tasksBlocked         int
+	totalRetries         int
+	largestPatch         int
+	highRiskPatches      int
+	modifiedFiles        map[string]int
+	failurePatterns      map[string]int
+	convergenceSamples   int
+	convergenceAlerts    int
+	stability            stabilityMonitor
+	subsystems           map[string]*subsystemMetrics
+	totalPatchConfidence float64
+	totalPatchRisk       float64
+	successfulPatches    int
 }
 
 const architectRetryTemp = 0.8
@@ -55,6 +59,8 @@ type fileSnapshot struct {
 // runExecutionMode restores state, executes pending tasks, and persists end-of-run memory summaries.
 func runExecutionMode() {
 	start := time.Now()
+	atomic.StoreInt64(&inferenceLatencyTotal, 0)
+	atomic.StoreInt64(&inferenceCallCount, 0)
 	if err := recoverExecutionJournal(); err != nil {
 		logError("journal_recovery_failed", "", err.Error())
 	}
@@ -89,6 +95,9 @@ func runExecutionMode() {
 		RetryConvergenceAlerts:  stats.convergenceAlerts,
 		FailurePatterns:         copyCounts(stats.failurePatterns),
 		ModifiedFiles:           copyCounts(stats.modifiedFiles),
+		AvgInferenceLatencyMs:   averageInferenceLatency(),
+		AvgPatchConfidence:      averageFloat(stats.totalPatchConfidence, stats.successfulPatches),
+		AvgPatchRisk:            averageFloat(stats.totalPatchRisk, stats.successfulPatches),
 	}
 
 	if err := memory.SaveRun(summary); err != nil {
@@ -325,7 +334,7 @@ func resolveBuildFailure(
 ) {
 	stats.recordBuildFailure(buildOut)
 	previousFailure := classifyBuildFailure(buildOut)
-	writeBuildFailure(task.ID, buildOut)
+	writeBuildFailure(task.ID, buildOut, task.RetryCount)
 	buildOut, trivialFixSnapshots := tryTrivialFixes(tf, task, originalDiff, buildOut, stats, taskCache)
 	if buildOut == "" {
 		return
@@ -406,7 +415,7 @@ func attemptBuildFixRetries(
 		currentFailure := classifyBuildFailure(buildOut)
 		forceArchitectRetry = stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
 		previousFailure = currentFailure
-		writeBuildFailure(task.ID, buildOut)
+		writeBuildFailure(task.ID, buildOut, task.RetryCount)
 	}
 
 	return appliedFixDiffs, false
@@ -461,7 +470,7 @@ func tryTrivialFixes(
 	buildOut = build()
 	if buildOut != "" {
 		stats.recordBuildFailure(buildOut)
-		writeBuildFailure(task.ID, buildOut)
+		writeBuildFailure(task.ID, buildOut, task.RetryCount)
 		return buildOut, trivialFixSnapshots
 	}
 	if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
@@ -606,6 +615,9 @@ func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	s.trackHighRisk(diff, task)
 	computeReward(task.ID, task.RetryCount, patchSize)
 	s.stability.recordSuccess()
+	s.totalPatchConfidence += evaluatePatchConfidence(diff).score
+	s.totalPatchRisk += scorePatchRisk(diff, task).score
+	s.successfulPatches++
 }
 
 // trackHighRisk increments the high-risk counter when a patch crosses the configured risk threshold.
