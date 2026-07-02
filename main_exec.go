@@ -637,6 +637,7 @@ func previousRetryDiff(appliedFixDiffs []string) string {
 }
 
 // recordRetryConvergence tracks repeated failure categories across consecutive fix attempts.
+// It returns true when the next retry should force architect mode.
 func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) bool {
 	if retryCount < 2 || current == "" {
 		return false

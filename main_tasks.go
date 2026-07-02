@@ -222,7 +222,7 @@ Context:
 
 Return unified diff only.
 `, executionBlock("FIX", task, constraints, hints), task.Description, context, previousAttemptBlock(previousDiff))
-return prompt
+	return prompt
 }
 
 // executionBlock formats the structured execution metadata injected into EXECUTE and FIX prompts.
