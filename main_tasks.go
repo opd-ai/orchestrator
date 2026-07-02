@@ -67,6 +67,16 @@ Task:
 // replaceTask swaps one task ID for a new set of replacement tasks.
 func replaceTask(tf *TaskFile, id string, newTasks []Task) {
 	replacementIDs := replacementBoundaryIDs(newTasks)
+	// If the boundary set is empty (e.g. all replacement tasks depend on each
+	// other, or every task is depended on by another), fall back to all
+	// replacement IDs so downstream tasks are not incorrectly unblocked by
+	// having their old dependency silently removed without gaining a new one.
+	if len(replacementIDs) == 0 && len(newTasks) > 0 {
+		replacementIDs = make([]string, len(newTasks))
+		for i, t := range newTasks {
+			replacementIDs[i] = t.ID
+		}
+	}
 	var updated []Task
 	for _, t := range tf.Tasks {
 		if t.ID != id {

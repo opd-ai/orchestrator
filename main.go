@@ -479,6 +479,11 @@ func gitCommitFiles(task *Task, files []string) error {
 	if len(files) == 0 {
 		return fmt.Errorf("cannot commit: no files to stage (patch touched no files)")
 	}
+	// Unstage any pre-existing staged changes so that only the scoped files
+	// are included in this recovery commit.
+	if err := exec.Command("git", "reset", "HEAD").Run(); err != nil {
+		return fmt.Errorf("git reset: %w", err)
+	}
 	args := append([]string{"add", "--"}, files...)
 	if err := exec.Command("git", args...).Run(); err != nil {
 		return fmt.Errorf("git add: %w", err)
@@ -496,9 +501,32 @@ func gitCommitStaged(task *Task) error {
 func filesTouched(diff string) []string {
 	lines := strings.Split(diff, "\n")
 	set := map[string]bool{}
+	var pendingOld string
 	for _, l := range lines {
-		if strings.HasPrefix(l, "+++ b/") {
-			set[strings.TrimPrefix(l, "+++ b/")] = true
+		var path string
+		switch {
+		case strings.HasPrefix(l, "--- a/"):
+			// Remember the old-side path; it is needed if the next +++ line
+			// is /dev/null (deleted file).
+			pendingOld = strings.TrimPrefix(l, "--- a/")
+			if i := strings.IndexByte(pendingOld, '\t'); i >= 0 {
+				pendingOld = pendingOld[:i]
+			}
+			continue
+		case strings.HasPrefix(l, "+++ /dev/null"):
+			// Deleted file – the file name is in the preceding --- a/ line.
+			path = pendingOld
+		case strings.HasPrefix(l, "+++ b/"):
+			// Modified or added file.
+			path = strings.TrimPrefix(l, "+++ b/")
+			// Strip optional trailing tab-separated fields (e.g. timestamps).
+			if i := strings.IndexByte(path, '\t'); i >= 0 {
+				path = path[:i]
+			}
+		}
+		pendingOld = ""
+		if path != "" {
+			set[path] = true
 		}
 	}
 	var out []string
