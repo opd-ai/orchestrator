@@ -24,7 +24,7 @@ func SaveRun(summary RunSummary) error {
 			return fmt.Errorf("run summary encode: %w", err)
 		}
 		if err := os.WriteFile(filename, data, 0o644); err != nil {
-			return err
+			return fmt.Errorf("write run summary: %w", err)
 		}
 
 		trimOldRuns(runsPath)
