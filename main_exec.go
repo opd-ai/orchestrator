@@ -213,7 +213,7 @@ func resolveBuildFailure(
 	task *Task,
 	context string,
 	contextFiles []string,
-	diff string,
+	originalDiff string,
 	buildOut string,
 	stats *executionStats,
 	taskCache map[string]string,
@@ -221,33 +221,35 @@ func resolveBuildFailure(
 	stats.recordBuildFailure(buildOut)
 	previousFailure := classifyBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
-	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats, taskCache)
+	buildOut = tryTrivialFixes(tf, task, originalDiff, buildOut, stats, taskCache)
 	if buildOut == "" {
 		return
 	}
 
+	appliedFixDiffs := make([]string, 0, maxRetries)
 	for task.RetryCount < maxRetries {
 		task.RetryCount++
 		stats.totalRetries++
 		logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-		diff = fixTask(task, context, buildFixHints(buildOut))
-		if err := validatePatch(diff, contextFiles, task); err != nil {
-			writeRejectedPatch(task.ID, diff)
+		fixDiff := fixTask(task, context, buildFixHints(buildOut))
+		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
+			writeRejectedPatch(task.ID, fixDiff)
 			break
 		}
 		if !dryRun {
-			if err := applyPatch(diff); err != nil {
+			if err := applyPatch(fixDiff); err != nil {
 				break
 			}
+			appliedFixDiffs = append(appliedFixDiffs, fixDiff)
 		}
 
 		buildOut = build()
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff, task)
+			stats.recordSuccessfulPatch(fixDiff, task)
 			stats.tasksCompleted++
-			cacheTaskResult(taskCache, task, diff)
+			cacheTaskResult(taskCache, task, fixDiff)
 			saveTaskCache(taskCache)
 			saveTasks(*tf)
 			return
@@ -259,9 +261,30 @@ func resolveBuildFailure(
 		writeBuildFailure(task.ID, buildOut)
 	}
 
+	if !dryRun {
+		if err := revertBuildFailurePatches(originalDiff, appliedFixDiffs); err != nil {
+			logError("patch_revert_failed", task.ID, err.Error())
+		}
+	}
 	logInfo("task_splitting", task.ID, "max retries exceeded")
 	splitTask(tf, task)
 	saveTasks(*tf)
+}
+
+func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string) error {
+	var revertErrors []string
+	for i := len(appliedFixDiffs) - 1; i >= 0; i-- {
+		if err := revertPatch(appliedFixDiffs[i]); err != nil {
+			revertErrors = append(revertErrors, err.Error())
+		}
+	}
+	if err := revertPatch(originalDiff); err != nil {
+		revertErrors = append(revertErrors, err.Error())
+	}
+	if len(revertErrors) > 0 {
+		return fmt.Errorf("revert failed: %s", strings.Join(revertErrors, "; "))
+	}
+	return nil
 }
 
 func tryTrivialFixes(

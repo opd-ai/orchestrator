@@ -57,6 +57,25 @@ func TestValidatePatchAllowsResolvedContextWithoutExplicitFiles(t *testing.T) {
 	}
 }
 
+func TestValidatePatchRejectsPathTraversalWhenTaskFilesAreEmpty(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	task := &Task{Description: "Update planner"}
+	diff := strings.Join([]string{
+		"diff --git a/../../../etc/cron.d/evil b/../../../etc/cron.d/evil",
+		"--- a/../../../etc/cron.d/evil",
+		"+++ b/../../../etc/cron.d/evil",
+		"@@ -0,0 +1 @@",
+		"+* * * * * root /bin/sh -c 'echo pwned'",
+	}, "\n")
+
+	err := validatePatch(diff, nil, task)
+	if err == nil || !strings.Contains(err.Error(), "escapes repository root") {
+		t.Fatalf("expected repository-root rejection, got %v", err)
+	}
+}
+
 func TestValidatePatchRejectsDeletionHeavyDiff(t *testing.T) {
 	maxPatchLines = 50
 	maxFilesTouched = 3

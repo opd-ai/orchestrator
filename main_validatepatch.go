@@ -3,6 +3,8 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 )
 
@@ -69,6 +71,11 @@ func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error
 	if len(touchedFiles) > maxFilesTouched+fileCapBonus() {
 		return errors.New("too many files modified")
 	}
+	for _, file := range touchedFiles {
+		if err := validateTouchedFilePath(file); err != nil {
+			return err
+		}
+	}
 	if len(task.Files) == 0 {
 		return nil
 	}
@@ -81,6 +88,32 @@ func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error
 		if !allowed[file] {
 			return fmt.Errorf("file %q is outside the allowed set", file)
 		}
+	}
+	return nil
+}
+
+func validateTouchedFilePath(file string) error {
+	if strings.TrimSpace(file) == "" {
+		return errors.New("invalid touched file path")
+	}
+
+	clean := filepath.Clean(file)
+	if filepath.IsAbs(clean) {
+		return fmt.Errorf("file %q escapes repository root", file)
+	}
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return fmt.Errorf("resolve repository root: %w", err)
+	}
+
+	candidate := filepath.Join(wd, clean)
+	rel, err := filepath.Rel(wd, candidate)
+	if err != nil {
+		return fmt.Errorf("validate path %q: %w", file, err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("file %q escapes repository root", file)
 	}
 	return nil
 }
