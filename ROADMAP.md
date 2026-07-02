@@ -6,7 +6,7 @@
 
 ## Project Context
 
-- **What it claims to do**: Autonomous engineering orchestrator for local LLMs — reads planning documents (`AUDIT.md`, `GAPS.md`, `GOALS.md`, `PLAN.md`, `ROADMAP.md`), generates atomic tasks, executes them against a local LLM (Qwen2.5/Qwen3 Coder via Ollama or any OpenAI-compatible endpoint), validates and applies unified-diff patches, commits clean git history — without human supervision.
+- **What it claims to do**: Autonomous engineering orchestrator for local LLMs — reads planning documents (`GAPS.md`, `GOALS.md`, `PLAN.md`, `ROADMAP.md`), generates atomic tasks, executes them against a local LLM (Qwen2.5/Qwen3 Coder via Ollama or any OpenAI-compatible endpoint), validates and applies unified-diff patches, commits clean git history — without human supervision.
 - **Target audience**: Solo developers and small teams running open-weight models on consumer CPUs; specifically the Qwen2.5-Coder-32B-Instruct / Qwen3-Coder family.
 - **Architecture**:
   - `main` (29 files, 192 functions) — execution loop, DAG scheduling, patch validation, task lifecycle, prompt construction, adaptive tier/model escalation, observability, DSL, speculative execution, subsystem analytics.
@@ -240,7 +240,7 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 ## Resolved Gaps (No Action Required)
 
-The following issues were previously documented in `GAPS.md` or `AUDIT.md` and are confirmed resolved in the current codebase:
+The following issues were previously documented in `GAPS.md` and are confirmed resolved in the current codebase:
 
 | Gap | Resolution |
 |---|---|

@@ -10,7 +10,7 @@ It is purpose-built for **Qwen2.5 / Qwen3 Coder** and other open-weight models r
 
 ## Features
 
-- **Document-driven task generation** — reads `AUDIT.md`, `GAPS.md`, `GOALS.md`, `PLAN.md`, and `ROADMAP.md` to bootstrap a task queue automatically
+- **Document-driven task generation** — reads `GAPS.md`, `GOALS.md`, `PLAN.md`, and `ROADMAP.md` to bootstrap a task queue automatically
 - **DAG-based execution** — respects `depends_on` ordering; tasks run only when their dependencies are satisfied
 - **Patch safety** — validates every diff before application: line-count limits, file-touch limits, and deletion-ratio guards
 - **Automatic task splitting** — oversized or failing tasks are split into smaller atomic subtasks and re-queued
@@ -98,7 +98,6 @@ The orchestrator scans the working directory for any of the following files at s
 
 | File | Prefix | Purpose |
 |---|---|---|
-| `AUDIT.md` | `A` | Code-quality findings to address |
 | `GAPS.md` | `G` | Missing features or coverage gaps |
 | `GOALS.md` | `O` | Improvement goals |
 | `PLAN.md` | `P` | Explicit implementation plans |

@@ -3,7 +3,7 @@
 ## G-01: File-Allowlist Guard Missing When Task Has No Files
 
 - **Stated Goal**: GOALS.md Phase 1.2: "Validate patch: only touch allowed files." README.md §Safety: "patches are validated against a per-task file allowlist before being applied."
-- **Current State**: `validateTouchedFiles` in `main_validatepatch.go:72-74` returns `nil` (no validation) when `len(task.Files) == 0`. Most tasks generated from planning documents (AUDIT.md, GOALS.md, ROADMAP.md) carry an empty `Files` slice because the file list is only populated by the symbol-task splitter for single-function tasks. The allowlist is never consulted for high-level planning tasks.
+- **Current State**: `validateTouchedFiles` in `main_validatepatch.go:72-74` returns `nil` (no validation) when `len(task.Files) == 0`. Most tasks generated from planning documents (GOALS.md, ROADMAP.md) carry an empty `Files` slice because the file list is only populated by the symbol-task splitter for single-function tasks. The allowlist is never consulted for high-level planning tasks.
 - **Impact**: Any LLM-generated diff can touch any file in the filesystem without restriction. An adversarial or corrupt model response could overwrite git configuration, CI scripts, SSH authorized_keys, or system cron files that are reachable from the working directory. This completely defeats the stated patch-safety guarantee for the majority of task types.
 - **Closing the Gap**: When `task.Files` is empty, fall back to validating that all touched paths are inside the repository root (canonical path containment check using `filepath.Clean` and `strings.HasPrefix`). Optionally, for tasks that operate on specific documentation files, populate `task.Files` during task generation.
 
@@ -30,7 +30,7 @@
 ## G-04: Working Directory Not Reset Before Each Task
 
 - **Stated Goal**: GOALS.md Phase 1.2: "Reset working directory before each task."
-- **Current State**: There is no `git checkout -- .`, `git clean -fd`, or `revertPatch` call at the top of `execute` in `main_exec.go`. If a prior task's fix loop exhausted retries (see AUDIT.md F-02), the working tree contains the failed patch. The next task's diff is generated against the corrupted state and, if applied, compounds the corruption. Even in the happy path, the orchestrator relies on each prior task completing cleanly with a commit, with no verification.
+- **Current State**: There is no `git checkout -- .`, `git clean -fd`, or `revertPatch` call at the top of `execute` in `main_exec.go`. If a prior task's fix loop exhausted retries, the working tree contains the failed patch. The next task's diff is generated against the corrupted state and, if applied, compounds the corruption. Even in the happy path, the orchestrator relies on each prior task completing cleanly with a commit, with no verification.
 - **Impact**: Cascading failures. After the first failed task with exhausted retries, all subsequent tasks operate against incorrect baselines. `build()` failures in later tasks may be caused entirely by earlier unreverted patches, not the current task's diff.
 - **Closing the Gap**: At the top of `execute`, before `getDiffForTask`, run `git checkout -- .` and `git clean -fd -x --exclude=tasks.json --exclude=orchestrator.log` to guarantee a clean baseline. Gate this on `!dryRun`.
 
