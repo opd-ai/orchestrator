@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"strings"
 	"time"
 
@@ -135,6 +136,15 @@ func execute() executionStats {
 		maybeEscalateTier(task, &stats) // check tier escalation triggers for this task
 		taskRisk := scorePatchRisk("", task)
 		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
+		if err := ensureCleanWorkspace(task.ID); err != nil {
+			logError("workspace_reset_failed", task.ID, err.Error())
+			markBlocked(task)
+			stats.tasksBlocked++
+			stats.stability.recordBlock()
+			recordSubsystemOutcome(stats.subsystems, task, false)
+			saveTasks(tf)
+			continue
+		}
 
 		contextFiles := resolveContextFiles(task)
 		context := gatherContextForTask(task, contextFiles)
@@ -429,6 +439,56 @@ func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 		return fmt.Errorf("restore failed: %s", strings.Join(restoreErrors, "; "))
 	}
 	return nil
+}
+
+func ensureCleanWorkspace(taskID string) error {
+	if dryRun || skipWorkspaceReset {
+		return nil
+	}
+	dirty, err := workspaceDirty()
+	if err != nil {
+		return err
+	}
+	if !dirty {
+		return nil
+	}
+
+	logInfo("dirty_workspace_detected", taskID, "")
+	if out, err := exec.Command("git", "checkout", "--", ".").CombinedOutput(); err != nil {
+		return fmt.Errorf("git checkout -- .: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	cleanArgs := []string{
+		"clean", "-fd",
+		"--exclude=tasks.json",
+		"--exclude=orchestrator.log",
+		"--exclude=orchestrator-journal.json",
+	}
+	if out, err := exec.Command("git", cleanArgs...).CombinedOutput(); err != nil {
+		return fmt.Errorf("git clean: %w (%s)", err, strings.TrimSpace(string(out)))
+	}
+	return nil
+}
+
+func workspaceDirty() (bool, error) {
+	dirty, err := commandMarksDirty("git", "diff", "--quiet", "HEAD")
+	if err != nil {
+		return false, err
+	}
+	if dirty {
+		return true, nil
+	}
+	return commandMarksDirty("git", "diff", "--cached", "--quiet")
+}
+
+func commandMarksDirty(name string, args ...string) (bool, error) {
+	cmd := exec.Command(name, args...)
+	if err := cmd.Run(); err != nil {
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+			return true, nil
+		}
+		return false, err
+	}
+	return false, nil
 }
 
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {

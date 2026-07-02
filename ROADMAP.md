@@ -90,10 +90,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why second**: Without a clean baseline guarantee, each task in a failing run computes its diff against an unknown accumulated delta, producing cascading misattributed build failures. This defeats the retry-convergence design goal.
 
-- [ ] At the top of the `execute` inner loop, before `getDiffForTask`, run `git diff --quiet HEAD` and `git diff --cached --quiet`. If either fails and `!dryRun`, log `"dirty_workspace_detected"` and run `git checkout -- .` + `git clean -fd --exclude=tasks.json --exclude=orchestrator.log --exclude=orchestrator-journal.json`.
+- [x] At the top of the `execute` inner loop, before `getDiffForTask`, run `git diff --quiet HEAD` and `git diff --cached --quiet`. If either fails and `!dryRun`, log `"dirty_workspace_detected"` and run `git checkout -- .` + `git clean -fd --exclude=tasks.json --exclude=orchestrator.log --exclude=orchestrator-journal.json`.
   - Reference: `main_exec.go` — insert after `deescalateModel(task.ID)` and before `resolveContextFiles`.
-- [ ] Add a `--skip-workspace-reset` flag (default false) for users who intentionally pre-stage changes. Gate the clean-up on `!skipWorkspaceReset`.
-- [ ] **Validation**: manually apply a partial patch, restart the orchestrator, confirm the next task starts from a clean tree and the log shows `"dirty_workspace_detected"`.
+- [x] Add a `--skip-workspace-reset` flag (default false) for users who intentionally pre-stage changes. Gate the clean-up on `!skipWorkspaceReset`.
+- [x] **Validation**: manually apply a partial patch, restart the orchestrator, confirm the next task starts from a clean tree and the log shows `"dirty_workspace_detected"`.
 
 ---
 

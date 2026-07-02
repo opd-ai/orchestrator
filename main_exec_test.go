@@ -163,3 +163,110 @@ func TestRevertBuildFailurePatchesRestoresTrivialFixSnapshot(t *testing.T) {
 		t.Fatalf("expected file restored to original contents, got %q", got)
 	}
 }
+
+func TestWorkspaceDirtyDetectsStagedAndUnstaged(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+
+	initGitRepo(t, tmpDir)
+	if err := os.WriteFile("sample.txt", []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write sample: %v", err)
+	}
+	runCmd(t, "git", "add", "sample.txt")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	dirty, err := workspaceDirty()
+	if err != nil || dirty {
+		t.Fatalf("expected clean workspace, dirty=%v err=%v", dirty, err)
+	}
+
+	if err := os.WriteFile("sample.txt", []byte("b\n"), 0o644); err != nil {
+		t.Fatalf("write unstaged change: %v", err)
+	}
+	dirty, err = workspaceDirty()
+	if err != nil || !dirty {
+		t.Fatalf("expected dirty workspace for unstaged changes, dirty=%v err=%v", dirty, err)
+	}
+
+	runCmd(t, "git", "checkout", "--", "sample.txt")
+	if err := os.WriteFile("sample.txt", []byte("staged\n"), 0o644); err != nil {
+		t.Fatalf("write staged change: %v", err)
+	}
+	runCmd(t, "git", "add", "sample.txt")
+	dirty, err = workspaceDirty()
+	if err != nil || !dirty {
+		t.Fatalf("expected dirty workspace for staged changes, dirty=%v err=%v", dirty, err)
+	}
+}
+
+func TestEnsureCleanWorkspaceResetsAndPreservesExcludedFiles(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+
+	initGitRepo(t, tmpDir)
+	if err := os.WriteFile("tracked.txt", []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write tracked file: %v", err)
+	}
+	if err := os.WriteFile("tasks.json", []byte(`{"tasks":[]}`), 0o644); err != nil {
+		t.Fatalf("write tasks file: %v", err)
+	}
+	if err := os.WriteFile("orchestrator.log", []byte("log"), 0o644); err != nil {
+		t.Fatalf("write log file: %v", err)
+	}
+	if err := os.WriteFile("orchestrator-journal.json", []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write journal file: %v", err)
+	}
+	runCmd(t, "git", "add", "tracked.txt")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	if err := os.WriteFile("tracked.txt", []byte("dirty\n"), 0o644); err != nil {
+		t.Fatalf("write dirty tracked file: %v", err)
+	}
+	if err := os.WriteFile("temp.txt", []byte("remove me"), 0o644); err != nil {
+		t.Fatalf("write untracked file: %v", err)
+	}
+
+	prevDryRun, prevSkip := dryRun, skipWorkspaceReset
+	dryRun, skipWorkspaceReset = false, false
+	t.Cleanup(func() {
+		dryRun, skipWorkspaceReset = prevDryRun, prevSkip
+	})
+
+	if err := ensureCleanWorkspace("T1"); err != nil {
+		t.Fatalf("ensureCleanWorkspace: %v", err)
+	}
+
+	data, err := os.ReadFile("tracked.txt")
+	if err != nil {
+		t.Fatalf("read tracked file: %v", err)
+	}
+	if string(data) != "a\n" {
+		t.Fatalf("expected tracked file reset, got %q", data)
+	}
+	if _, err := os.Stat("temp.txt"); !os.IsNotExist(err) {
+		t.Fatalf("expected temp.txt removed, stat err=%v", err)
+	}
+	for _, keep := range []string{"tasks.json", "orchestrator.log", "orchestrator-journal.json"} {
+		if _, err := os.Stat(keep); err != nil {
+			t.Fatalf("expected %s preserved: %v", keep, err)
+		}
+	}
+}
