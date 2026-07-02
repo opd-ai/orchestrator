@@ -116,8 +116,10 @@ func TestBuildFixPromptIncludesPreviousAttemptPreview(t *testing.T) {
 	prompt := buildFixPrompt(
 		&Task{ID: "R4", Description: "Fix build"},
 		"context",
-		"compiler error",
-		strings.Join(lines, "\n"),
+		fixTaskConfig{
+			hints:        "compiler error",
+			previousDiff: strings.Join(lines, "\n"),
+		},
 	)
 	if !strings.Contains(prompt, "PREVIOUS_ATTEMPT (failed):") {
 		t.Fatalf("expected previous attempt block in %q", prompt)

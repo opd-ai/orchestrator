@@ -368,7 +368,12 @@ func attemptBuildFixRetries(
 
 		previousDiff := previousRetryDiff(appliedFixDiffs)
 		temperature, model := fixRetrySettings(task.RetryCount, forceArchitectRetry)
-		fixDiff := fixTask(task, context, buildFixHints(buildOut), previousDiff, temperature, model)
+		fixDiff := fixTask(task, context, fixTaskConfig{
+			hints:        buildFixHints(buildOut),
+			previousDiff: previousDiff,
+			temperature:  temperature,
+			model:        model,
+		})
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
 			// Validation happens before append/apply, so a rejected fix diff is not
 			// included in appliedFixDiffs.
@@ -639,7 +644,8 @@ func previousRetryDiff(appliedFixDiffs []string) string {
 }
 
 // recordRetryConvergence tracks repeated failure categories across consecutive fix attempts.
-// It returns true when the next retry should force architect mode.
+// It returns true only when the next retry should force architect mode, and false
+// for low retry counts, empty failure categories, or category changes between retries.
 func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) bool {
 	if retryCount < 2 || current == "" {
 		return false

@@ -13,6 +13,13 @@ const (
 	previousAttemptLineLimit      = 20
 )
 
+type fixTaskConfig struct {
+	hints        string
+	previousDiff string
+	temperature  float64
+	model        string
+}
+
 ////////////////////////////////////////////////////////////
 // TASK SPLITTING
 ////////////////////////////////////////////////////////////
@@ -197,13 +204,13 @@ Return unified diff only.
 }
 
 // fixTask builds and executes a retry prompt that asks the model to correct a failed patch.
-func fixTask(task *Task, context, hints, previousDiff string, temperature float64, model string) string {
-	prompt := buildFixPrompt(task, context, hints, previousDiff)
-	return callLLMWithModel(promptWithMemory(prompt), temperature, model)
+func fixTask(task *Task, context string, cfg fixTaskConfig) string {
+	prompt := buildFixPrompt(task, context, cfg)
+	return callLLMWithModel(promptWithMemory(prompt), cfg.temperature, cfg.model)
 }
 
 // buildFixPrompt assembles the retry prompt, including a preview of the previous failed diff when available.
-func buildFixPrompt(task *Task, context, hints, previousDiff string) string {
+func buildFixPrompt(task *Task, context string, cfg fixTaskConfig) string {
 	constraints := []string{
 		"Return a corrected unified diff",
 		"Keep patch minimal and atomic",
@@ -221,7 +228,7 @@ Context:
 %s
 
 Return unified diff only.
-`, executionBlock("FIX", task, constraints, hints), task.Description, context, previousAttemptBlock(previousDiff))
+`, executionBlock("FIX", task, constraints, cfg.hints), task.Description, context, previousAttemptBlock(cfg.previousDiff))
 	return prompt
 }
 
