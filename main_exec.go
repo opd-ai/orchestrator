@@ -608,21 +608,22 @@ func sanitizeCommandOutput(out []byte) string {
 // recordSuccessfulPatch updates execution metrics after a patch completes successfully.
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	patchSize := lineCount(diff)
+	patchRisk := scorePatchRisk(diff, task)
 	s.largestPatch = max(s.largestPatch, patchSize)
 	for _, file := range filesTouched(diff) {
 		s.modifiedFiles[file]++
 	}
-	s.trackHighRisk(diff, task)
+	s.trackHighRisk(patchRisk.level)
 	computeReward(task.ID, task.RetryCount, patchSize)
 	s.stability.recordSuccess()
 	s.totalPatchConfidence += evaluatePatchConfidence(diff).score
-	s.totalPatchRisk += scorePatchRisk(diff, task).score
+	s.totalPatchRisk += patchRisk.score
 	s.successfulPatches++
 }
 
 // trackHighRisk increments the high-risk counter when a patch crosses the configured risk threshold.
-func (s *executionStats) trackHighRisk(diff string, task *Task) {
-	if scorePatchRisk(diff, task).level >= RiskHigh {
+func (s *executionStats) trackHighRisk(level RiskLevel) {
+	if level >= RiskHigh {
 		s.highRiskPatches++
 	}
 }

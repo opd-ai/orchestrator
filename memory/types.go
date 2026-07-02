@@ -25,9 +25,9 @@ type RunSummary struct {
 	RetryConvergenceAlerts  int            `json:"retry_convergence_alerts"`
 	FailurePatterns         map[string]int `json:"failure_patterns,omitempty"`
 	ModifiedFiles           map[string]int `json:"modified_files,omitempty"`
-	AvgInferenceLatencyMs   float64        `json:"avg_inference_latency_ms,omitempty"`
-	AvgPatchConfidence      float64        `json:"avg_patch_confidence,omitempty"`
-	AvgPatchRisk            float64        `json:"avg_patch_risk,omitempty"`
+	AvgInferenceLatencyMs   float64        `json:"avg_inference_latency_ms"`
+	AvgPatchConfidence      float64        `json:"avg_patch_confidence"`
+	AvgPatchRisk            float64        `json:"avg_patch_risk"`
 }
 
 type CountMetric struct {
@@ -45,7 +45,7 @@ type AdaptiveMetrics struct {
 	ProblemFileCounts     map[string]int `json:"problem_file_counts,omitempty"`
 	TopFailureTypes       []CountMetric  `json:"top_failure_types,omitempty"`
 	TopProblemFiles       []CountMetric  `json:"top_problem_files,omitempty"`
-	AvgInferenceLatencyMs float64        `json:"avg_inference_latency_ms,omitempty"`
-	AvgPatchConfidence    float64        `json:"avg_patch_confidence,omitempty"`
-	AvgPatchRisk          float64        `json:"avg_patch_risk,omitempty"`
+	AvgInferenceLatencyMs float64        `json:"avg_inference_latency_ms"`
+	AvgPatchConfidence    float64        `json:"avg_patch_confidence"`
+	AvgPatchRisk          float64        `json:"avg_patch_risk"`
 }
