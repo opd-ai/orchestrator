@@ -26,6 +26,24 @@ type executionStats struct {
 	subsystems         map[string]*subsystemMetrics
 }
 
+// loopAction signals how the execute() loop should proceed after an iteration step.
+type loopAction int
+
+const (
+	actionContinue loopAction = iota // proceed to next iteration
+	actionDone                       // terminate the loop and return stats
+	actionSkip                       // skip to next iteration (task was re-queued)
+)
+
+// newExecutionStats returns a zero-valued executionStats with all maps initialised.
+func newExecutionStats() executionStats {
+	return executionStats{
+		modifiedFiles:   make(map[string]int),
+		failurePatterns: make(map[string]int),
+		subsystems:      make(map[string]*subsystemMetrics),
+	}
+}
+
 type fileSnapshot struct {
 	existed bool
 	mode    os.FileMode
@@ -88,140 +106,183 @@ func copyCounts(in map[string]int) map[string]int {
 	return out
 }
 
+// checkRunLimits returns true when the configured runtime or task-count limit has
+// been reached, logging the cause and subsystem stats before signalling a stop.
+func checkRunLimits(start time.Time, taskCounter int, stats *executionStats) bool {
+	if maxRuntime > 0 && time.Since(start) > maxRuntime {
+		logInfo("max_runtime_reached", "", "")
+		logSubsystemStats(stats.subsystems)
+		return true
+	}
+	if maxTasks > 0 && taskCounter >= maxTasks {
+		logInfo("max_tasks_reached", "", "")
+		logSubsystemStats(stats.subsystems)
+		return true
+	}
+	return false
+}
+
+// advanceTaskFile loads the task file, runs cluster merges, and returns the
+// next executable task together with a loopAction directing the caller.
+// actionDone means all tasks are complete; actionSkip means the task was
+// re-queued (caller should continue); actionContinue means task is ready.
+func advanceTaskFile(stats *executionStats) (TaskFile, *Task, loopAction) {
+	tf := loadTasks()
+	if mergeClusteredTasks(&tf) {
+		saveTasks(tf)
+	}
+	task := nextExecutableTask(&tf)
+	if task == nil {
+		logInfo("run_complete", "", "All tasks complete")
+		logSubsystemStats(stats.subsystems)
+		return tf, nil, actionDone
+	}
+	if task.MergedCount <= 1 && enforceTaskGranularity(&tf, task) {
+		logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
+		saveTasks(tf)
+		return tf, nil, actionSkip
+	}
+	return tf, task, actionContinue
+}
+
+// blockTask marks task as blocked, records the failure in stats, and persists tf.
+func blockTask(tf *TaskFile, task *Task, stats *executionStats) {
+	markBlocked(task)
+	stats.tasksBlocked++
+	stats.stability.recordBlock()
+	recordSubsystemOutcome(stats.subsystems, task, false)
+	saveTasks(*tf)
+}
+
+// setupTaskEnv logs the task start, de-escalates/re-escalates models and tiers,
+// and ensures the workspace is clean. Returns false if the workspace could not
+// be cleaned (task is blocked and caller should continue to next iteration).
+func setupTaskEnv(tf *TaskFile, task *Task, stats *executionStats) bool {
+	stats.tasksTotal++
+	logInfo("task_started", task.ID, task.Description)
+	deescalateTier(task.ID)
+	deescalateModel(task.ID)
+	deescalateReviewMode()
+	maybeEscalateTier(task, stats)
+	maybeEscalateModel(task, scorePatchRisk("", task), stats.tasksTotal)
+	if err := ensureCleanWorkspace(task.ID); err != nil {
+		logError("workspace_reset_failed", task.ID, err.Error())
+		blockTask(tf, task, stats)
+		return false
+	}
+	return true
+}
+
+// gatherAndValidateDiff resolves context, generates a diff via the LLM, and
+// validates it. On validation failure the task is either retried, split, or
+// blocked. Returns (diff, context, contextFiles, ok); ok==false means the
+// caller should continue to the next iteration.
+func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string, stats *executionStats) (string, string, []string, bool) {
+	contextFiles := resolveContextFiles(task)
+	context := gatherContextForTask(task, contextFiles)
+	diff := getDiffForTask(task, context, taskCache, stats)
+	if err := validatePatch(diff, contextFiles, task); err == nil {
+		return diff, context, contextFiles, true
+	} else if strings.Contains(err.Error(), "too large") {
+		writeRejectedPatch(task.ID, diff)
+		logInfo("patch_too_large_retrying", task.ID, err.Error())
+		task.RetryCount++
+		stats.totalRetries++
+		if task.RetryCount < maxRetries {
+			saveTasks(*tf) // persist incremented RetryCount so splitting threshold advances across iterations
+			return diff, context, contextFiles, false
+		}
+		logInfo("splitting_due_to_size", task.ID, "")
+		splitTask(tf, task)
+		saveTasks(*tf)
+	} else {
+		writeRejectedPatch(task.ID, diff)
+		logError("patch_rejected", task.ID, err.Error())
+		blockTask(tf, task, stats)
+	}
+	return diff, context, contextFiles, false
+}
+
+// applyPatchStep applies the diff to the workspace and records the journal entry.
+// Returns false (and blocks the task) if the apply fails.
+func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats) bool {
+	if err := applyDiffToWorkspace(diff, task); err != nil {
+		logError("patch_apply_failed", task.ID, err.Error())
+		blockTask(tf, task, stats)
+		return false
+	}
+	if err := recordExecutionJournal(task.ID, journalStepPatched, diff); err != nil {
+		logError("journal_write_failed", task.ID, err.Error())
+	}
+	return true
+}
+
+// runBuildStep skips the build in dry-run mode (returning "") or runs build()
+// and returns its output for failure analysis.
+func runBuildStep(taskID string) string {
+	if dryRun {
+		logInfo("dry_run_build_skipped", taskID, "")
+		return ""
+	}
+	return build()
+}
+
+// handleBuildResult processes the outcome of a build attempt: on success it
+// completes the task and updates stats; on failure it delegates to
+// resolveBuildFailure.
+func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFiles []string, buildOut string, stats *executionStats, taskCache map[string]string) {
+	if buildOut != "" {
+		if !dryRun {
+			resolveBuildFailure(tf, task, context, contextFiles, diff, buildOut, stats, taskCache)
+		}
+		return
+	}
+	if dryRun {
+		logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
+	} else if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
+		logError("journal_write_failed", task.ID, err.Error())
+	}
+	completeTask(task)
+	stats.recordSuccessfulPatch(diff, task)
+	stats.tasksCompleted++
+	recordSubsystemOutcome(stats.subsystems, task, true)
+	recordSubsystemPatchMetrics(task, diff)
+	cacheTaskResult(taskCache, task, diff)
+	saveTaskCache(taskCache)
+	saveTasks(*tf)
+}
+
+// execute runs the main task-execution loop, returning a summary of all work
+// performed in the session.
 func execute() executionStats {
 	start := time.Now()
 	taskCounter := 0
-	stats := executionStats{
-		modifiedFiles:   make(map[string]int),
-		failurePatterns: make(map[string]int),
-		subsystems:      make(map[string]*subsystemMetrics),
-	}
+	stats := newExecutionStats()
 	taskCache := loadTaskCache()
-
 	for {
-		if maxRuntime > 0 && time.Since(start) > maxRuntime {
-			logInfo("max_runtime_reached", "", "")
-			logSubsystemStats(stats.subsystems)
+		if checkRunLimits(start, taskCounter, &stats) {
 			return stats
 		}
-
-		if maxTasks > 0 && taskCounter >= maxTasks {
-			logInfo("max_tasks_reached", "", "")
-			logSubsystemStats(stats.subsystems)
+		tf, task, action := advanceTaskFile(&stats)
+		if action == actionDone {
 			return stats
 		}
-
-		tf := loadTasks()
-		if mergeClusteredTasks(&tf) {
-			saveTasks(tf)
-		}
-		task := nextExecutableTask(&tf)
-		if task == nil {
-			logInfo("run_complete", "", "All tasks complete")
-			logSubsystemStats(stats.subsystems)
-			return stats
-		}
-		if task.MergedCount <= 1 && enforceTaskGranularity(&tf, task) {
-			logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
-			saveTasks(tf)
+		if action == actionSkip {
 			continue
 		}
-
 		taskCounter++
-		stats.tasksTotal++
-		logInfo("task_started", task.ID, task.Description)
-
-		deescalateTier(task.ID)         // de-escalate from previous task (no-op on first)
-		deescalateModel(task.ID)        // revert escalated model from previous task
-		deescalateReviewMode()          // reset strategic review flag
-		maybeEscalateTier(task, &stats) // check tier escalation triggers for this task
-		taskRisk := scorePatchRisk("", task)
-		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
-		if err := ensureCleanWorkspace(task.ID); err != nil {
-			logError("workspace_reset_failed", task.ID, err.Error())
-			markBlocked(task)
-			stats.tasksBlocked++
-			stats.stability.recordBlock()
-			recordSubsystemOutcome(stats.subsystems, task, false)
-			saveTasks(tf)
+		if !setupTaskEnv(&tf, task, &stats) {
 			continue
 		}
-
-		contextFiles := resolveContextFiles(task)
-		context := gatherContextForTask(task, contextFiles)
-		diff := getDiffForTask(task, context, taskCache, &stats)
-
-		if err := validatePatch(diff, contextFiles, task); err != nil {
-			writeRejectedPatch(task.ID, diff)
-
-			if strings.Contains(err.Error(), "too large") {
-				logInfo("patch_too_large_retrying", task.ID, err.Error())
-				task.RetryCount++
-				stats.totalRetries++
-
-				if task.RetryCount < maxRetries {
-					continue
-				}
-
-				logInfo("splitting_due_to_size", task.ID, "")
-				splitTask(&tf, task)
-				saveTasks(tf)
-				continue
-			}
-
-			logError("patch_rejected", task.ID, err.Error())
-			markBlocked(task)
-			stats.tasksBlocked++
-			stats.stability.recordBlock()
-			recordSubsystemOutcome(stats.subsystems, task, false)
-			saveTasks(tf)
+		diff, context, contextFiles, ok := gatherAndValidateDiff(&tf, task, taskCache, &stats)
+		if !ok {
 			continue
 		}
-
-		if !dryRun {
-			if err := applyDiffToWorkspace(diff, task); err != nil {
-				logError("patch_apply_failed", task.ID, err.Error())
-				markBlocked(task)
-				stats.tasksBlocked++
-				stats.stability.recordBlock()
-				recordSubsystemOutcome(stats.subsystems, task, false)
-				saveTasks(tf)
-				continue
-			}
-			if err := recordExecutionJournal(task.ID, journalStepPatched, diff); err != nil {
-				logError("journal_write_failed", task.ID, err.Error())
-			}
-		}
-
-		buildOut := ""
-		if dryRun {
-			logInfo("dry_run_build_skipped", task.ID, "")
-		} else {
-			buildOut = build()
-		}
-
-		if buildOut == "" {
-			if dryRun {
-				logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
-			}
-			if !dryRun {
-				if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
-					logError("journal_write_failed", task.ID, err.Error())
-				}
-			}
-			completeTask(task)
-			stats.recordSuccessfulPatch(diff, task)
-			stats.tasksCompleted++
-			recordSubsystemOutcome(stats.subsystems, task, true)
-			recordSubsystemPatchMetrics(task, diff)
-			cacheTaskResult(taskCache, task, diff)
-			saveTaskCache(taskCache)
-			saveTasks(tf)
+		if !dryRun && !applyPatchStep(&tf, task, diff, &stats) {
 			continue
 		}
-		if !dryRun {
-			resolveBuildFailure(&tf, task, context, contextFiles, diff, buildOut, &stats, taskCache)
-		}
+		buildOut := runBuildStep(task.ID)
+		handleBuildResult(&tf, task, diff, context, contextFiles, buildOut, &stats, taskCache)
 	}
 }
 

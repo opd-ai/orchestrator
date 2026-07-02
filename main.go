@@ -47,7 +47,6 @@ func ensureTasksFile() {
 		Name   string
 		Prefix string
 	}{
-		{"AUDIT.md", "A"},
 		{"GAPS.md", "G"},
 		{"GOALS.md", "O"},
 		{"PLAN.md", "P"},

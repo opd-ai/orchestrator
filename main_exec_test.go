@@ -324,3 +324,61 @@ func TestEnsureCleanWorkspaceResetsStagedChanges(t *testing.T) {
 		t.Fatalf("expected clean workspace after reset, dirty=%v err=%v", dirty, err)
 	}
 }
+
+func TestGatherAndValidateDiffPersistsRetryCountOnTooLargePatch(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(wd)
+	})
+
+	prevMaxPatchLines, prevMaxRetries, prevMaxFilesTouched := maxPatchLines, maxRetries, maxFilesTouched
+	maxPatchLines, maxRetries, maxFilesTouched = 1, 3, 3
+	t.Cleanup(func() {
+		maxPatchLines, maxRetries, maxFilesTouched = prevMaxPatchLines, prevMaxRetries, prevMaxFilesTouched
+	})
+
+	task := Task{
+		ID:          "T1",
+		Description: "update target file",
+		Status:      "in_progress",
+		Files:       []string{"target.go"},
+		Hash:        "task-hash",
+	}
+	saveTasks(TaskFile{Tasks: []Task{task}})
+
+	diffLines := []string{
+		"diff --git a/target.go b/target.go",
+		"--- a/target.go",
+		"+++ b/target.go",
+		"@@ -0,0 +1,11 @@",
+	}
+	for i := 1; i <= 11; i++ {
+		diffLines = append(diffLines, "+line"+strings.Repeat("x", i))
+	}
+	diff := strings.Join(diffLines, "\n") + "\n"
+	taskCache := map[string]string{
+		task.Hash: diff,
+	}
+
+	stats := newExecutionStats()
+	tf := loadTasks()
+	_, _, _, ok := gatherAndValidateDiff(&tf, &tf.Tasks[0], taskCache, &stats)
+	if ok {
+		t.Fatalf("expected oversized patch validation to fail")
+	}
+
+	saved := loadTasks()
+	if got := saved.Tasks[0].RetryCount; got != 1 {
+		t.Fatalf("expected persisted retry count of 1, got %d", got)
+	}
+	if got := stats.totalRetries; got != 1 {
+		t.Fatalf("expected stats totalRetries to be 1, got %d", got)
+	}
+}

@@ -6,7 +6,7 @@
 
 ## Project Context
 
-- **What it claims to do**: Autonomous engineering orchestrator for local LLMs — reads planning documents (`AUDIT.md`, `GAPS.md`, `GOALS.md`, `PLAN.md`, `ROADMAP.md`), generates atomic tasks, executes them against a local LLM (Qwen2.5/Qwen3 Coder via Ollama or any OpenAI-compatible endpoint), validates and applies unified-diff patches, commits clean git history — without human supervision.
+- **What it claims to do**: Autonomous engineering orchestrator for local LLMs — reads planning documents (`GAPS.md`, `GOALS.md`, `PLAN.md`, `ROADMAP.md`), generates atomic tasks, executes them against a local LLM (Qwen2.5/Qwen3 Coder via Ollama or any OpenAI-compatible endpoint), validates and applies unified-diff patches, commits clean git history — without human supervision.
 - **Target audience**: Solo developers and small teams running open-weight models on consumer CPUs; specifically the Qwen2.5-Coder-32B-Instruct / Qwen3-Coder family.
 - **Architecture**:
   - `main` (29 files, 192 functions) — execution loop, DAG scheduling, patch validation, task lifecycle, prompt construction, adaptive tier/model escalation, observability, DSL, speculative execution, subsystem analytics.
@@ -145,11 +145,11 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why seventh**: The project enforces `max_function_length = 30` and `max_cyclomatic_complexity = 10` via `architecture/invariants.json` and `checkPostPatchInvariants`. The three most critical functions violate both. This matters specifically because `execute` is the primary target of `--self-evolve` mode: if the model cannot safely patch a 113-line function with CC=14, the self-improvement loop is impaired.
 
-- [ ] **`execute` (113 lines, CC=14) in `main_exec.go`**: extract the build-pass path into `handleBuildSuccess(tf, task, diff, stats, taskCache)` and the build-fail path into `handleBuildFailure(...)`. The per-iteration DAG/merge logic can become `advanceTaskFile(tf) bool`. Target: three functions of ≤40 lines each.
-- [ ] **`collectSymbolInfos` (71 lines, CC=13) in `audit/context.go`**: the AST visitor and the symbol extraction loop are independent concerns. Extract `visitNode(node ast.Node, info *symbolInfo)` and `buildSymbolMap(fset, files) SymbolMap`. Target: ≤30 lines each.
-- [ ] **`DeriveLayersFromGraph` (53 lines, CC=13) in `audit/graph.go`**: the layer-assignment loop and the violation-detection loop are separable. Extract `assignLayers(graph) map[string]int` and `detectLayerViolations(graph, layers) []LayerViolation`. Target: ≤30 lines each.
-- [ ] After each decomposition, re-run `checkPostPatchInvariants` to confirm compliance, then run `go test -race ./...`.
-- [ ] **Validation**: `go-stats-generator analyze . --skip-tests` reports zero functions exceeding the declared invariant limits.
+- [x] **`execute` (113 lines, CC=14) in `main_exec.go`**: extract the build-pass path into `handleBuildSuccess(tf, task, diff, stats, taskCache)` and the build-fail path into `handleBuildFailure(...)`. The per-iteration DAG/merge logic can become `advanceTaskFile(tf) bool`. Target: three functions of ≤40 lines each.
+- [x] **`collectSymbolInfos` (71 lines, CC=13) in `audit/context.go`**: the AST visitor and the symbol extraction loop are independent concerns. Extract `visitNode(node ast.Node, info *symbolInfo)` and `buildSymbolMap(fset, files) SymbolMap`. Target: ≤30 lines each.
+- [x] **`DeriveLayersFromGraph` (53 lines, CC=13) in `audit/graph.go`**: the layer-assignment loop and the violation-detection loop are separable. Extract `assignLayers(graph) map[string]int` and `detectLayerViolations(graph, layers) []LayerViolation`. Target: ≤30 lines each.
+- [x] After each decomposition, re-run `checkPostPatchInvariants` to confirm compliance, then run `go test -race ./...`.
+- [x] **Validation**: `go-stats-generator analyze . --skip-tests` reports zero functions exceeding the declared invariant limits.
 
 ---
 
@@ -240,7 +240,7 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 ## Resolved Gaps (No Action Required)
 
-The following issues were previously documented in `GAPS.md` or `AUDIT.md` and are confirmed resolved in the current codebase:
+The following issues were previously documented in `GAPS.md` and are confirmed resolved in the current codebase:
 
 | Gap | Resolution |
 |---|---|

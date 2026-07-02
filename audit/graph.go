@@ -107,18 +107,11 @@ func cycleFindings(cycles [][]string) []Finding {
 	return findings
 }
 
-// DeriveLayersFromGraph assigns each package to a topological layer using
-// Kahn's algorithm.  Packages with no in-repo dependencies form the innermost
-// layer (foundation); packages that depend on them form the next layer, and so
-// on.  The returned slice is ordered from outermost (layers[0], e.g. "main") to
-// innermost (layers[len-1], foundation), matching the convention expected by
-// CheckLayering.  Packages that are part of a dependency cycle are excluded
-// (they will be reported separately by DetectCycles).
-func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
-	// Build an in-repo dependency count and reverse-edge map for Kahn's algorithm.
+// buildLayerDeps constructs the per-package in-repo dependency count and the
+// reverse-edge map (dep → importers) required by Kahn's algorithm.
+func buildLayerDeps(g *DependencyGraph) (map[string]int, map[string][]string) {
 	depsCount := make(map[string]int, len(g.Packages))
-	dependents := make(map[string][]string) // dep → packages that import dep
-
+	dependents := make(map[string][]string)
 	for pkg := range g.Packages {
 		depsCount[pkg] = 0
 	}
@@ -134,8 +127,12 @@ func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
 			dependents[dep] = append(dependents[dep], pkg)
 		}
 	}
+	return depsCount, dependents
+}
 
-	// Seed the queue with packages that have no in-repo dependencies.
+// computeLayerBFS runs Kahn's BFS on the dependency graph and returns packages
+// grouped by layer, innermost (zero-dependency) layer first.
+func computeLayerBFS(g *DependencyGraph, depsCount map[string]int, dependents map[string][]string) [][]string {
 	var queue []string
 	for pkg := range g.Packages {
 		if depsCount[pkg] == 0 {
@@ -144,7 +141,6 @@ func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
 	}
 	sort.Strings(queue)
 
-	// BFS level-by-level to build layers (innermost first).
 	var layers [][]string
 	visited := make(map[string]bool, len(g.Packages))
 	for len(queue) > 0 {
@@ -162,8 +158,19 @@ func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
 		}
 		queue = next
 	}
+	return layers
+}
 
-	// Reverse so that layers[0] is outermost (most dependent, e.g. main/cmd).
+// DeriveLayersFromGraph assigns each package to a topological layer using
+// Kahn's algorithm.  Packages with no in-repo dependencies form the innermost
+// layer (foundation); packages that depend on them form the next layer, and so
+// on.  The returned slice is ordered from outermost (layers[0], e.g. "main") to
+// innermost (layers[len-1], foundation), matching the convention expected by
+// CheckLayering.  Packages that are part of a dependency cycle are excluded
+// (they will be reported separately by DetectCycles).
+func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
+	depsCount, dependents := buildLayerDeps(g)
+	layers := computeLayerBFS(g, depsCount, dependents)
 	for i, j := 0, len(layers)-1; i < j; i, j = i+1, j-1 {
 		layers[i], layers[j] = layers[j], layers[i]
 	}
