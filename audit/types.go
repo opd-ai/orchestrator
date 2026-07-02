@@ -14,6 +14,8 @@ type SymbolInfo struct {
 	Exported bool
 	Receiver string
 	Package  string
+	HasDoc   bool
+	Methods  []string // method names for interface kinds
 }
 
 type DependencyGraph struct {
@@ -37,9 +39,11 @@ type AuditContext struct {
 	ClusterSummary string
 	Exports        []SymbolInfo
 	Imports        []string
+	Files          []string
 	Hotspots       []Hotspot
 	CallDensity    map[string]int
 	DeadFunctions  []string
+	FuncDAG        *FuncDAG
 }
 
 type Finding struct {

@@ -223,11 +223,6 @@ Content:
 	return tasks
 }
 
-// callLLM calls the LLM endpoint with the default model and temperature (0.6).
-func callLLM(prompt string) string {
-	return callLLMWithModel(prompt, 0.6, modelName)
-}
-
 // callLLMWithTemp calls the LLM endpoint with the executor model and given temperature.
 func callLLMWithTemp(prompt string, temperature float64) string {
 	return callLLMWithModel(prompt, temperature, activeExecutorModel())

@@ -67,6 +67,9 @@ func enforceTaskGranularity(tf *TaskFile, task *Task) bool {
 		replaceTask(tf, task.ID, splitMultiFileTask(task))
 		return true
 	}
+	if splitBySymbols(tf, task) {
+		return true
+	}
 	if !isOversizedTask(task.Description) {
 		return false
 	}
@@ -76,6 +79,30 @@ func enforceTaskGranularity(tf *TaskFile, task *Task) bool {
 	}
 	replaceTask(tf, task.ID, subtasks)
 	return true
+}
+
+// splitBySymbols tries to decompose a single-file task into symbol-scoped subtasks.
+// It returns true when the task was replaced by ≥2 symbol subtasks.
+func splitBySymbols(tf *TaskFile, task *Task) bool {
+	if len(task.Files) != 1 || isAlreadySymbolTask(task.ID) {
+		return false
+	}
+	subtasks := symbolTasksForFiles(task.ID, task.Files)
+	if len(subtasks) < 2 {
+		return false
+	}
+	replaceTask(tf, task.ID, subtasks)
+	return true
+}
+
+// symbolTaskRe matches the ".s<digits>" suffix produced by generateSymbolTask,
+// e.g. "T1.s3" or "R2.s12".
+var symbolTaskRe = regexp.MustCompile(`\.s\d+`)
+
+// isAlreadySymbolTask reports whether a task ID was produced by symbolTasksForFiles,
+// i.e. it contains the ".s<digits>" suffix used by generateSymbolTask.
+func isAlreadySymbolTask(id string) bool {
+	return symbolTaskRe.MatchString(id)
 }
 
 func splitMultiFileTask(task *Task) []Task {
