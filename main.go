@@ -56,8 +56,16 @@ func ensureTasksFile() {
 			continue
 		}
 
-		data, _ := os.ReadFile(doc.Name)
-		generated := generateTasksFromDoc(doc.Name, string(data))
+		data, err := os.ReadFile(doc.Name)
+		if err != nil {
+			logError("doc_read_failed", "", err.Error())
+			continue
+		}
+		generated, err := generateTasksFromDoc(doc.Name, string(data))
+		if err != nil {
+			logError("planner_failed", "", fmt.Sprintf("doc=%s err=%s", doc.Name, err.Error()))
+			continue
+		}
 
 		for i, t := range generated {
 			hash := hashString(t.Description)
@@ -197,7 +205,7 @@ func markBlocked(task *Task) {
 // UTIL
 ////////////////////////////////////////////////////////////
 
-func generateTasksFromDoc(docType, content string) []Task {
+func generateTasksFromDoc(docType, content string) ([]Task, error) {
 	prompt := fmt.Sprintf(`
 Decompose into atomic tasks.
 Return JSON array only.
@@ -209,18 +217,23 @@ Content:
 %s
 `, docType, content)
 
-	resp := callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(plannerModelName))
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		resp := callLLMWithModel(promptWithMemory(prompt), 0.6, roleModel(plannerModelName))
 
-	clean, err := extractJSON(resp)
-	if err != nil {
-		logFatal("planner_invalid_json", err.Error())
-	}
+		clean, err := extractJSON(resp)
+		if err != nil {
+			logError("planner_invalid_json", "", fmt.Sprintf("attempt=%d err=%s", attempt+1, err.Error()))
+			continue
+		}
 
-	var tasks []Task
-	if err := json.Unmarshal([]byte(clean), &tasks); err != nil {
-		logFatal("planner_invalid_json", err.Error())
+		var tasks []Task
+		if err := json.Unmarshal([]byte(clean), &tasks); err != nil {
+			logError("planner_invalid_json", "", fmt.Sprintf("attempt=%d err=%s", attempt+1, err.Error()))
+			continue
+		}
+		return tasks, nil
 	}
-	return tasks
+	return nil, fmt.Errorf("planner failed to return valid JSON after %d attempts", maxRetries)
 }
 
 // callLLMWithTemp calls the LLM endpoint with the executor model and given temperature.
@@ -228,11 +241,11 @@ func callLLMWithTemp(prompt string, temperature float64) string {
 	return callLLMWithModel(prompt, temperature, activeExecutorModel())
 }
 
-// callLLMWithModel calls the LLM endpoint with explicit model and temperature,
-// enforces the token budget, and logs prompt/completion token usage.
+// callLLMWithModel calls the LLM endpoint with explicit model and temperature
+// and logs prompt/completion token usage. Prompt truncation is handled once
+// upstream by compressPrompt (via promptWithMemory); the redundant
+// enforceTokenBudget call has been removed to unify truncation strategy (F-17).
 func callLLMWithModel(prompt string, temperature float64, model string) string {
-	prompt = enforceTokenBudget(prompt)
-
 	body := map[string]interface{}{
 		"model": model,
 		"messages": []map[string]string{
@@ -262,7 +275,9 @@ func callLLMWithModel(prompt string, temperature float64, model string) string {
 		} `json:"usage"`
 	}
 
-	json.Unmarshal(out, &parsed)
+	if err := json.Unmarshal(out, &parsed); err != nil {
+		logError("llm_parse_failed", "", err.Error())
+	}
 	logInfo("token_usage", "", fmt.Sprintf(
 		"model=%s prompt=%d completion=%d total=%d",
 		model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens, parsed.Usage.TotalTokens,
@@ -276,7 +291,9 @@ func callLLMWithModel(prompt string, temperature float64, model string) string {
 func loadTasks() TaskFile {
 	data, _ := os.ReadFile(tasksFile)
 	var tf TaskFile
-	json.Unmarshal(data, &tf)
+	if err := json.Unmarshal(data, &tf); err != nil {
+		logFatal("tasks_corrupt", err.Error())
+	}
 	return tf
 }
 
@@ -286,8 +303,13 @@ func saveTasks(tf TaskFile) {
 }
 
 func gitCommit(task *Task) {
-	exec.Command("git", "add", ".").Run()
-	exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run()
+	if err := exec.Command("git", "add", ".").Run(); err != nil {
+		logError("git_add_failed", task.ID, err.Error())
+		return
+	}
+	if err := exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run(); err != nil {
+		logError("git_commit_failed", task.ID, err.Error())
+	}
 }
 
 func filesTouched(diff string) []string {

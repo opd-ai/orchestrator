@@ -134,6 +134,23 @@ func completeTask(task *Task) {
 	logInfo("task_complete", task.ID, "")
 }
 
+// logFileHandle is the persistent handle to orchestrator.log, opened once at
+// startup by openLogFile. It is never closed explicitly — the OS reclaims it
+// on process exit (F-27).
+var logFileHandle *os.File
+
+// openLogFile opens orchestrator.log for appending once at startup.
+// If the file cannot be opened a warning is printed to stderr and all
+// subsequent log calls fall back to stderr as well (F-12).
+func openLogFile() {
+	f, err := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "log open failed: %v\n", err)
+		return
+	}
+	logFileHandle = f
+}
+
 func log(level, event, taskID, msg string) {
 	entry := LogEntry{
 		Timestamp: time.Now().UTC().Format(time.RFC3339),
@@ -148,9 +165,11 @@ func log(level, event, taskID, msg string) {
 		fmt.Println(string(b))
 	}
 
-	f, _ := os.OpenFile(logFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
-	defer f.Close()
-	f.Write(append(b, '\n'))
+	if logFileHandle != nil {
+		logFileHandle.Write(append(b, '\n'))
+	} else {
+		fmt.Fprintf(os.Stderr, "%s\n", b)
+	}
 }
 
 func logInfo(event, taskID, msg string)  { log("INFO", event, taskID, msg) }

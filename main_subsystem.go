@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // subsystemMetrics tracks stability metrics for one subsystem across the session.
@@ -56,7 +57,11 @@ func (m *subsystemMetrics) isStable() bool {
 
 // subsystemRegistry holds per-subsystem metrics for the current session.
 // It is populated by recordSubsystemOutcome and consulted by subsystemBudgetMultiplier.
-var subsystemRegistry = make(map[string]*subsystemMetrics)
+// subsystemMu protects all accesses to subsystemRegistry (F-21).
+var (
+	subsystemRegistry = make(map[string]*subsystemMetrics)
+	subsystemMu       sync.RWMutex
+)
 
 // subsystemBudgetMultiplier returns an adaptive patch-budget multiplier for the
 // given subsystem based on its recorded stability:
@@ -64,7 +69,9 @@ var subsystemRegistry = make(map[string]*subsystemMetrics)
 //   - Stable subsystems get a 1.20× increase to reward consistent success.
 //   - All others get 1.0× (no change).
 func subsystemBudgetMultiplier(subsystem string) float64 {
+	subsystemMu.RLock()
 	m, ok := subsystemRegistry[subsystem]
+	subsystemMu.RUnlock()
 	if !ok {
 		return 1.0
 	}
@@ -126,6 +133,9 @@ func detectClusteredTasks(tasks []Task) [][]int {
 //   - Both tasks have RetryCount == 0 (no prior failures on either)
 //   - Combined description length stays manageable
 //   - Combined file list fits within maxFilesTouched + fileCapBonus()
+//
+// Clusters are processed with the higher index first so that each removal does
+// not shift the lower index used for the same cluster (F-14).
 func mergeClusteredTasks(tf *TaskFile) bool {
 	merged := false
 	clusters := detectClusteredTasks(tf.Tasks)
@@ -134,7 +144,11 @@ func mergeClusteredTasks(tf *TaskFile) bool {
 			continue
 		}
 		// Take the first pair from each cluster.
+		// Sort so we always remove the higher index first, keeping lower index stable.
 		i, j := group[0], group[1]
+		if i > j {
+			i, j = j, i
+		}
 		if i >= len(tf.Tasks) || j >= len(tf.Tasks) {
 			continue
 		}
@@ -145,7 +159,7 @@ func mergeClusteredTasks(tf *TaskFile) bool {
 		}
 		logInfo("subsystem_merge", a.ID, fmt.Sprintf("merging %s + %s (subsystem=%s)", a.ID, b.ID, taskSubsystem(a)))
 		mergeInto(a, b)
-		// Remove task at index j (replace with last element).
+		// Remove task at index j (always the higher index) to keep lower indices stable.
 		tf.Tasks = append(tf.Tasks[:j], tf.Tasks[j+1:]...)
 		merged = true
 	}
@@ -204,7 +218,10 @@ func unionFiles(a, b []string) []string {
 func recordSubsystemOutcome(metrics map[string]*subsystemMetrics, task *Task, success bool) {
 	sub := taskSubsystem(task)
 	ensureSubsystemEntry(metrics, sub)
+
+	subsystemMu.Lock()
 	ensureSubsystemEntry(subsystemRegistry, sub)
+	subsystemMu.Unlock()
 
 	update := func(m *subsystemMetrics) {
 		m.totalRetries += task.RetryCount
@@ -215,17 +232,23 @@ func recordSubsystemOutcome(metrics map[string]*subsystemMetrics, task *Task, su
 		}
 	}
 	update(metrics[sub])
+
+	subsystemMu.Lock()
 	update(subsystemRegistry[sub])
+	subsystemMu.Unlock()
 }
 
 // recordSubsystemPatchMetrics records risk and patch size for a completed patch.
 func recordSubsystemPatchMetrics(task *Task, diff string) {
 	sub := taskSubsystem(task)
+
+	subsystemMu.Lock()
 	ensureSubsystemEntry(subsystemRegistry, sub)
 	m := subsystemRegistry[sub]
 	m.patchCount++
 	m.totalRisk += scorePatchRisk(diff, task).score
 	m.totalSize += lineCount(diff)
+	subsystemMu.Unlock()
 }
 
 func ensureSubsystemEntry(m map[string]*subsystemMetrics, sub string) {

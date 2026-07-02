@@ -21,20 +21,45 @@ func extractJSON(content string) (string, error) {
 		}
 	}
 
-	// Try to find first JSON object or array manually
+	// Find the outermost JSON object or array using forward bracket matching.
 	start := strings.IndexAny(content, "[{")
 	if start == -1 {
 		return "", errors.New("no JSON found in response")
 	}
 
-	content = content[start:]
+	open := rune(content[start])
+	var close rune
+	if open == '[' {
+		close = ']'
+	} else {
+		close = '}'
+	}
 
-	// Try progressive trimming from end until valid JSON
-	for i := len(content); i > 0; i-- {
-		candidate := content[:i]
-		var js interface{}
-		if json.Unmarshal([]byte(candidate), &js) == nil {
-			return candidate, nil
+	depth := 0
+	inString := false
+	escaped := false
+	for i, r := range content[start:] {
+		switch {
+		case escaped:
+			escaped = false
+		case inString && r == '\\':
+			escaped = true
+		case r == '"':
+			inString = !inString
+		case inString:
+			// skip
+		case r == open:
+			depth++
+		case r == close:
+			depth--
+			if depth == 0 {
+				candidate := content[start : start+i+1]
+				var js interface{}
+				if json.Unmarshal([]byte(candidate), &js) == nil {
+					return candidate, nil
+				}
+				return "", errors.New("could not extract valid JSON")
+			}
 		}
 	}
 

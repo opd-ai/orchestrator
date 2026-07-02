@@ -18,7 +18,9 @@ func SaveRun(summary RunSummary) error {
 		return err
 	}
 
-	os.MkdirAll(RunsDir, 0755)
+	if err := os.MkdirAll(RunsDir, 0755); err != nil {
+		return fmt.Errorf("runs dir: %w", err)
+	}
 
 	filename := filepath.Join(RunsDir,
 		fmt.Sprintf("%s.json",
@@ -31,8 +33,12 @@ func SaveRun(summary RunSummary) error {
 
 	trimOldRuns()
 
-	exec.Command("git", "add", ".").Run()
-	exec.Command("git", "commit", "-m", "memory: add run summary").Run()
+	if err := exec.Command("git", "add", ".").Run(); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+	if err := exec.Command("git", "commit", "-m", "memory: add run summary").Run(); err != nil {
+		return fmt.Errorf("git commit: %w", err)
+	}
 
 	return checkoutBranch(originalBranch)
 }

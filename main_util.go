@@ -35,7 +35,7 @@ func compilerErrorLines(buildOut string) []string {
 			continue
 		}
 		out = append(out, line)
-		if len(out) == 5 {
+		if len(out) == 15 {
 			break
 		}
 	}
@@ -157,8 +157,16 @@ func roleModel(roleVar string) string {
 	return modelName
 }
 
+// cachedGoFiles holds the result of the first allGoFiles call for the session.
+// Populated lazily on first use; subsequent calls return the cached slice (F-23).
+var cachedGoFiles []string
+
 // allGoFiles returns all tracked Go source files in the repository.
+// The result is cached for the lifetime of the process.
 func allGoFiles() []string {
+	if cachedGoFiles != nil {
+		return cachedGoFiles
+	}
 	out, err := exec.Command("git", "ls-files").Output()
 	if err != nil {
 		return nil
@@ -169,5 +177,6 @@ func allGoFiles() []string {
 			result = append(result, f)
 		}
 	}
-	return result
+	cachedGoFiles = result
+	return cachedGoFiles
 }

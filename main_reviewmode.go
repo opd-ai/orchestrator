@@ -1,6 +1,9 @@
 package main
 
-import "fmt"
+import (
+	"fmt"
+	"strings"
+)
 
 // strategicReviewBound caps the context expansion factor in review mode.
 // Context grows to at most reviewContextFactor × maxContextFiles files.
@@ -38,9 +41,9 @@ func shouldTriggerStrategicReview(task *Task, stats *executionStats) bool {
 // touches exported interfaces or public API surface.
 func containsAPIKeyword(desc string) bool {
 	keywords := []string{"interface", "api", "public", "export", "signature", "contract"}
-	lower := toLower(desc)
+	lower := strings.ToLower(desc)
 	for _, kw := range keywords {
-		if contains(lower, kw) {
+		if strings.Contains(lower, kw) {
 			return true
 		}
 	}
@@ -81,7 +84,7 @@ func resolveExpandedFiles(task *Task, capFiles int) []string {
 		if seen[f] {
 			continue
 		}
-		if contains(toLower(f), kw) {
+		if strings.Contains(strings.ToLower(f), kw) {
 			seen[f] = true
 			files = append(files, f)
 		}
@@ -117,30 +120,3 @@ func deescalateReviewMode() {
 	isStrategicReviewActive = false
 }
 
-// toLower is a package-local wrapper to avoid importing strings in this file.
-func toLower(s string) string {
-	result := make([]byte, len(s))
-	for i := range s {
-		c := s[i]
-		if c >= 'A' && c <= 'Z' {
-			c += 'a' - 'A'
-		}
-		result[i] = c
-	}
-	return string(result)
-}
-
-// contains reports whether substr appears in s.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		findSubstr(s, substr))
-}
-
-func findSubstr(s, sub string) bool {
-	for i := 0; i <= len(s)-len(sub); i++ {
-		if s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
-}

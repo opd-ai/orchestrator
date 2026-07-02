@@ -1,18 +1,32 @@
 package audit
 
+import (
+	"fmt"
+	"sort"
+)
+
 func ClusterPackages(graph *DependencyGraph) []Cluster {
 	visited := make(map[string]bool)
 	var clusters []Cluster
 	clusterID := 0
 
+	// Sort package keys for deterministic cluster assignment across runs (F-16).
+	keys := make([]string, 0, len(graph.Packages))
 	for pkg := range graph.Packages {
+		keys = append(keys, pkg)
+	}
+	sort.Strings(keys)
+
+	for _, pkg := range keys {
 		if visited[pkg] {
 			continue
 		}
 		group, totalLOC := collectCluster(graph, pkg, visited)
 
+		// Use fmt.Sprintf to produce decimal IDs ("cluster_0", "cluster_1", …) instead
+		// of converting the integer as a Unicode code point (F-03).
 		clusters = append(clusters, Cluster{
-			ID:       "cluster_" + string(rune(clusterID)),
+			ID:       fmt.Sprintf("cluster_%d", clusterID),
 			Packages: group,
 			TotalLOC: totalLOC,
 		})

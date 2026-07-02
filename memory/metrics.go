@@ -3,6 +3,7 @@ package memory
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"sort"
@@ -16,7 +17,9 @@ func LoadMetrics() (AdaptiveMetrics, error) {
 	if err != nil {
 		return m, nil
 	}
-	json.Unmarshal(data, &m)
+	if err := json.Unmarshal(data, &m); err != nil {
+		return m, fmt.Errorf("metrics decode: %w", err)
+	}
 	return m, nil
 }
 

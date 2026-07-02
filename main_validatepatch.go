@@ -61,10 +61,27 @@ func deletionRatio(diff string) float64 {
 
 func validatePatchSize(diff string, task *Task) error {
 	limit := allowedPatchLines(task)
-	if lineCount(diff) > limit {
+	if changedLineCount(diff) > limit {
 		return fmt.Errorf("patch too large (limit=%d)", limit)
 	}
 	return nil
+}
+
+// changedLineCount counts only '+' and '-' lines in a diff, excluding file
+// header lines (+++/---). This matches the semantics used by deletionRatio and
+// correctly measures the actual edit size rather than inflating the count with
+// diff header overhead (F-15).
+func changedLineCount(diff string) int {
+	count := 0
+	for _, line := range strings.Split(diff, "\n") {
+		switch {
+		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+			continue
+		case strings.HasPrefix(line, "+"), strings.HasPrefix(line, "-"):
+			count++
+		}
+	}
+	return count
 }
 
 func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error {
@@ -265,7 +282,14 @@ func validateLineDeltaCaps(diff string, task *Task) error {
 	return nil
 }
 
+// perFileLineDeltaCap returns the maximum number of changed lines allowed for a
+// single file within a patch. For single-file patches the full budget applies;
+// for multi-file patches half the budget is allocated per file to leave room
+// for sibling files (F-18).
 func perFileLineDeltaCap(task *Task) int {
+	if len(task.Files) <= 1 {
+		return max(1, allowedPatchLines(task))
+	}
 	return max(1, allowedPatchLines(task)/2)
 }
 

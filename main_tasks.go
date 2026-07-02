@@ -137,7 +137,7 @@ func splitOversizedDescription(task *Task) []Task {
 		subtasks = append(subtasks, Task{
 			ID:          fmt.Sprintf("%s%d", prefix, len(subtasks)+1),
 			Description: part,
-			Files:       task.Files,
+			Files:       append([]string(nil), task.Files...),
 			DependsOn:   task.DependsOn,
 			Status:      "pending",
 		})
