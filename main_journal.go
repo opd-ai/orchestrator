@@ -188,7 +188,7 @@ func reversePatchDryRun(diff string) error {
 		if msg == "" {
 			msg = err.Error()
 		}
-		return fmt.Errorf("recovered patch no longer matches workspace: %s", msg)
+		return fmt.Errorf("workspace validation failed: recovered patch no longer matches workspace: %s", msg)
 	}
 	return nil
 }

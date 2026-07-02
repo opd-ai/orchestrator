@@ -477,7 +477,7 @@ func gitCommit(task *Task) error {
 
 func gitCommitFiles(task *Task, files []string) error {
 	if len(files) == 0 {
-		return fmt.Errorf("no files specified for staging")
+		return fmt.Errorf("cannot commit: no files to stage (patch touched no files)")
 	}
 	args := append([]string{"add", "--"}, files...)
 	if err := exec.Command("git", args...).Run(); err != nil {
