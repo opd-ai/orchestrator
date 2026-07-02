@@ -28,6 +28,11 @@ func runAuditMode() {
 
 	var allFindings []audit.Finding
 
+	// Graph-level architecture checks (cycles, layering) run once for the whole graph.
+	if auditPass == "architecture" || auditPass == "all" || auditPass == "" {
+		allFindings = append(allFindings, audit.RunArchitectureGraphChecks(graph, nil)...)
+	}
+
 	for _, cluster := range clusters {
 		allFindings = append(allFindings, auditClusterFindings(cluster, graph)...)
 	}

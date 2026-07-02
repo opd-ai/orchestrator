@@ -24,6 +24,7 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
 		ClusterSummary: summary,
 		Exports:        exports,
 		Imports:        imports,
+		Files:          files,
 		Hotspots:       DetectHotspots(files),
 		CallDensity:    callDensity,
 		DeadFunctions:  DeadFunctionScan(files),
@@ -79,6 +80,7 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 					Kind:     "func",
 					Exported: true,
 					Package:  pkgPath,
+					HasDoc:   d.Doc != nil && len(d.Doc.List) > 0,
 				}
 				if d.Recv != nil && len(d.Recv.List) > 0 {
 					symbol.Kind = "method"
@@ -86,6 +88,7 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 				}
 				symbols = append(symbols, symbol)
 			case *ast.GenDecl:
+				gdHasDoc := d.Doc != nil && len(d.Doc.List) > 0
 				for _, spec := range d.Specs {
 					switch s := spec.(type) {
 					case *ast.TypeSpec:
@@ -93,17 +96,23 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 							continue
 						}
 						kind := "type"
-						if _, ok := s.Type.(*ast.InterfaceType); ok {
+						var methods []string
+						if iface, ok := s.Type.(*ast.InterfaceType); ok {
 							kind = "interface"
+							methods = interfaceMethodNames(iface)
 						}
+						hasDoc := gdHasDoc || (s.Doc != nil && len(s.Doc.List) > 0) || (s.Comment != nil && len(s.Comment.List) > 0)
 						symbols = append(symbols, SymbolInfo{
 							Name:     s.Name.Name,
 							Kind:     kind,
 							Exported: true,
 							Package:  pkgPath,
+							HasDoc:   hasDoc,
+							Methods:  methods,
 						})
 					case *ast.ValueSpec:
 						kind := strings.ToLower(d.Tok.String())
+						hasDoc := gdHasDoc || (s.Doc != nil && len(s.Doc.List) > 0)
 						for _, name := range s.Names {
 							if !name.IsExported() {
 								continue
@@ -113,6 +122,7 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 								Kind:     kind,
 								Exported: true,
 								Package:  pkgPath,
+								HasDoc:   hasDoc,
 							})
 						}
 					}
@@ -122,6 +132,20 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 	}
 
 	return symbols
+}
+
+// interfaceMethodNames returns the method names declared in an interface type.
+func interfaceMethodNames(iface *ast.InterfaceType) []string {
+	var names []string
+	if iface.Methods == nil {
+		return names
+	}
+	for _, field := range iface.Methods.List {
+		for _, name := range field.Names {
+			names = append(names, name.Name)
+		}
+	}
+	return names
 }
 
 func exprString(expr ast.Expr) string {

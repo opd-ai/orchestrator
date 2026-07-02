@@ -12,6 +12,18 @@ func RunArchitecturePass(ctx AuditContext) []Finding {
 	return findings
 }
 
+// RunArchitectureGraphChecks performs graph-level architecture checks that
+// require the full dependency graph rather than a single cluster context.
+// It detects dependency cycles and, when explicit layer definitions are
+// provided, reports package layering violations.
+func RunArchitectureGraphChecks(graph *DependencyGraph, layers [][]string) []Finding {
+	findings := graph.DetectCycles()
+	if len(layers) > 0 {
+		findings = append(findings, graph.CheckLayering(layers)...)
+	}
+	return findings
+}
+
 func deadFunctionFindings(names []string) []Finding {
 	if len(names) == 0 {
 		return nil
@@ -27,11 +39,10 @@ func deadFunctionFindings(names []string) []Finding {
 
 func RunAPIPass(ctx AuditContext) []Finding {
 	findings := apiInterfaceFindings(ctx.Exports)
-	return append(findings, apiSurfaceFindings(ctx.Exports)...)
-}
-
-func RunConcurrencyPass(ctx AuditContext) []Finding {
-	return concurrencyFindings(ctx.Imports)
+	findings = append(findings, apiSurfaceFindings(ctx.Exports)...)
+	findings = append(findings, undocumentedExportFindings(ctx.Exports)...)
+	findings = append(findings, interfaceDriftFindings(ctx.Exports)...)
+	return findings
 }
 
 func architectureHotspotFinding(hotspot Hotspot) (Finding, bool) {
@@ -143,28 +154,92 @@ func apiSurfaceFindings(exports []SymbolInfo) []Finding {
 	return findings
 }
 
-func firstConcurrencyImport(imports []string) (string, bool) {
-	for _, imp := range imports {
-		if imp == "sync" || imp == "sync/atomic" {
-			return imp, true
-		}
+// undocumentedExportFinding returns a finding when an exported symbol lacks a doc comment.
+func undocumentedExportFinding(symbol SymbolInfo) (Finding, bool) {
+	if symbol.HasDoc {
+		return Finding{}, false
 	}
-	return "", false
+	return Finding{
+		Package:        symbol.Package,
+		Type:           "api_undocumented_export",
+		Severity:       "low",
+		Description:    fmt.Sprintf("Exported %s %s has no doc comment", symbol.Kind, symbol.Name),
+		Recommendation: "Add a doc comment to all exported symbols to satisfy Go documentation conventions.",
+		Confidence:     0.90,
+	}, true
 }
 
-func concurrencyFindings(imports []string) []Finding {
-	imp, ok := firstConcurrencyImport(imports)
-	if !ok {
-		return nil
+func undocumentedExportFindings(exports []SymbolInfo) []Finding {
+	var findings []Finding
+	for _, sym := range exports {
+		if f, ok := undocumentedExportFinding(sym); ok {
+			findings = append(findings, f)
+		}
+	}
+	return findings
+}
+
+// interfaceDriftFinding flags an exported interface when none of the exported
+// receiver methods in the same symbol set implement all of its declared methods.
+// This is a best-effort heuristic: it only considers methods visible in the
+// same audit cluster, so false positives are possible for cross-package consumers.
+func interfaceDriftFinding(iface SymbolInfo, exports []SymbolInfo) (Finding, bool) {
+	if iface.Kind != "interface" || len(iface.Methods) == 0 {
+		return Finding{}, false
+	}
+	if hasConcreteImplementor(iface, exports) {
+		return Finding{}, false
+	}
+	return Finding{
+		Package:        iface.Package,
+		Type:           "api_interface_drift",
+		Severity:       "medium",
+		Description:    fmt.Sprintf("Exported interface %s has no in-cluster concrete implementor; it may have drifted from the codebase", iface.Name),
+		Recommendation: "Ensure at least one concrete type in the package implements the interface, or restrict its visibility.",
+		Confidence:     0.70,
+	}, true
+}
+
+// hasConcreteImplementor reports whether any exported method set in exports
+// covers every method name declared in iface.
+func hasConcreteImplementor(iface SymbolInfo, exports []SymbolInfo) bool {
+	// Build a set of method names per receiver.
+	receiverMethods := make(map[string]map[string]bool)
+	for _, sym := range exports {
+		if sym.Kind != "method" || sym.Receiver == "" {
+			continue
+		}
+		base := strings.TrimPrefix(sym.Receiver, "*")
+		if receiverMethods[base] == nil {
+			receiverMethods[base] = make(map[string]bool)
+		}
+		receiverMethods[base][sym.Name] = true
 	}
 
-	return []Finding{
-		{
-			Type:           "concurrency_primitive_usage",
-			Severity:       "medium",
-			Description:    fmt.Sprintf("Cluster imports %s and should be reviewed for lock scope and goroutine safety", imp),
-			Recommendation: "Audit synchronization paths and add targeted tests around concurrent access.",
-			Confidence:     0.75,
-		},
+	for _, methods := range receiverMethods {
+		if implementsAll(iface.Methods, methods) {
+			return true
+		}
 	}
+	return false
+}
+
+// implementsAll reports whether methodSet contains every name in required.
+func implementsAll(required []string, methodSet map[string]bool) bool {
+	for _, m := range required {
+		if !methodSet[m] {
+			return false
+		}
+	}
+	return true
+}
+
+func interfaceDriftFindings(exports []SymbolInfo) []Finding {
+	var findings []Finding
+	for _, sym := range exports {
+		if f, ok := interfaceDriftFinding(sym, exports); ok {
+			findings = append(findings, f)
+		}
+	}
+	return findings
 }
