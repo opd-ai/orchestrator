@@ -164,6 +164,80 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 ---
 
+### Priority 9 — Pass Previous Diff to Fix Loop + Dynamic Temperature
+
+**Why**: The retry loop (`fixTask` / `attemptBuildFixRetries`) is the hottest consumer of inference cycles. On each retry, `fixTask` receives the task description, current file context, and compiler hints — but **not the diff that produced the last failure**. Without this context, a quantized model will frequently regenerate the same broken patch, producing the oscillation events already tracked by `recordRetryConvergence`. In addition, temperature is hardcoded at 0.6 for every retry regardless of whether the failure looks deterministic or exploratory.
+
+- [ ] Add a `previousDiff string` parameter to `fixTask` in `main_tasks.go`. When non-empty, append a `PREVIOUS_ATTEMPT (failed):` block containing the first 20 lines of the prior diff to the FIX prompt. The 20-line cap prevents this from consuming the context budget.
+  - Reference: `main_exec.go:attemptBuildFixRetries` accumulates `appliedFixDiffs`; pass `appliedFixDiffs[len-1]` as `previousDiff` on each call after the first retry.
+- [ ] Add a `tempForRetry(retryCount int) float64` helper returning `0.3` on retry 1 (conservative restatement), `0.7` on retry 2 (exploratory), `0.5` on retry 3+ (balanced). Replace the hardcoded `0.6` in `fixTask` with this helper.
+- [ ] When `recordRetryConvergence` detects two consecutive identical failure categories, immediately force the next retry to use the architect model (`roleModel(architectModelName)`) and temperature 0.8 rather than continuing with the executor model.
+  - Reference: `main_exec.go:attemptBuildFixRetries:297` is where the oscillation is detected; route model selection there instead of only logging.
+- [ ] **Validation**: compare `retry_convergence_alerts / retry_convergence_samples` before and after across a sample run. Target: ratio drops below 20 %. Also confirm `go test -race ./...` exits 0 after the change.
+
+---
+
+### Priority 10 — Per-file Context Cap + Signature-only Fallback
+
+**Why**: `gatherFileContext` reads each file with `os.ReadFile` and concatenates raw bytes without any per-file size limit. A single large file (e.g. `main_exec.go` at ~350 lines) can consume the entire 6,000-character prompt budget, cutting off the task description and all subsequent context files. This is the dominant cause of first-attempt inference failures on tasks that reference multiple files.
+
+- [ ] Add `const maxBytesPerFile = 2000` to `main.go`. In `gatherFileContext`, truncate each file's contribution to `maxBytesPerFile` bytes before appending. When a file exceeds the cap, replace its body with the output of a new `extractSignatures(data []byte) []byte` helper that retains only lines beginning with `func `, `type `, `var `, or `const ` — preserving the callable surface without body detail.
+  - Reference: `main.go:gatherFileContext` (lines ≈169-179); `main_context.go:funcScopedContext` already does a variant of this for function bodies.
+- [ ] In `funcScopedContext`, when `extractBoundaryContext` would return more than `maxBytesPerFile` bytes for a single function body, truncate at the boundary and append `"// ... (truncated)"` so the model is aware.
+- [ ] Adjust `promptCharBudget` (currently 6000) to account for the memory preamble (~400 chars) and execution block (~300 chars), leaving ~5300 chars for actual file context. Document this budget split in a comment above `compressPrompt`.
+  - Reference: `main_memory.go:11`.
+- [ ] **Validation**: create a task referencing a file > 2000 chars; confirm the prompt sent to the model (visible in verbose mode) contains the signature-only version and total prompt length stays under 6000 chars.
+
+---
+
+### Priority 11 — Intra-subtask Sequential Dependency Wiring
+
+**Why**: When `splitTask` or `splitMultiFileTask` decomposes a parent task into N subtasks, all N are set to `status: pending` with the parent's original deps — but no intra-group ordering is established. Two subtasks targeting the same file can both become eligible simultaneously. When the second subtask's patch tool applies against the tree already modified by the first, the context lines no longer match, producing a `patch_apply_failed` event that marks the subtask blocked with no meaningful error.
+
+- [ ] In `splitTask` (`main_tasks.go`), after building the subtask slice, wire sequential deps: `subtasks[i].DependsOn = append(subtasks[i].DependsOn, subtasks[i-1].ID)` for `i ≥ 1`. This guarantees the second subtask cannot start until the first has committed.
+- [ ] Apply the same sequential wiring in `splitMultiFileTask` and `splitOversizedDescription`.
+  - Exception: skip sequential wiring when `symbolTasksForFiles` confirms the subtasks target non-overlapping line ranges in the same file (i.e. `fbs[i].EndLine < fbs[i+1].StartLine`). This preserves true independence where it exists.
+- [ ] In `ensureTasksFile`, add a post-generation pass `injectFileOverlapDeps(tasks []Task) []Task` that inspects the `task.Files` list of every pair of pending tasks: if task B appears after task A in document order and both list file F, add A's ID to B's `DependsOn`.
+  - Reference: `main.go:ensureTasksFile` — call `injectFileOverlapDeps` before `saveTasks`.
+- [ ] **Validation**: generate two tasks that both reference the same file; confirm `nextExecutableTask` only returns the second after the first is `complete`. Measure `patch_apply_failed` rate for tasks with `.s\d` suffixes in their IDs before and after.
+
+---
+
+### Priority 12 — Tiered Deletion-Ratio Guard by ChangeType
+
+**Why**: `validateDeletionRatio` applies a hard 30 % deletion cap to all patches regardless of semantic intent. A `MODIFY_FUNCTION` task that rewrites a function body legitimately deletes 40–60 % of lines while replacing them with cleaner code. The hard cap forces such tasks into a split-and-rewrite pattern requiring 2–3× more inference calls. Conversely, `INSERT_FUNCTION` tasks should be held to a stricter cap (≤10 % deletions) because insertions should rarely need to remove existing code.
+
+- [ ] Change `validateDeletionRatio(diff string)` to `validateDeletionRatio(diff string, task *Task)` in `main_validatepatch.go`. Compute the cap via a new `deletionCapForChangeType(ct ChangeType) float64` helper:
+  - `DELETE_FUNCTION` → `0.70`
+  - `MODIFY_FUNCTION`, `MODIFY_STRUCT` → `0.50`
+  - `INSERT_FUNCTION`, `ADD_IMPORT` → `0.10`
+  - `GENERAL` or unset → `0.30` (current behaviour unchanged)
+- [ ] Add `DELETE_FUNCTION ChangeType = "DELETE_FUNCTION"` to `main_dsl.go` alongside the existing change type constants.
+- [ ] Update the `validatePatch` call to `validateDeletionRatio` to pass the task. Update `validateDSLSchema` to accept `DELETE_FUNCTION` as a valid type.
+  - Reference: `main_validatepatch.go:runValidationSteps` — the deletion-ratio step at position 6 currently passes no task context.
+- [ ] **Validation**: audit the last 20 entries in `logs/rejected_patches/` for the rejection reason `"patch deletes more than 30%"`. Confirm the tiered cap would have accepted the legitimate refactors. Run `go test -race ./...` after the change.
+
+---
+
+### Priority 13 — Structured Build Failure Artifacts + Inference Latency Logging
+
+**Why**: Build failure artifacts are written as raw text (`.log` files), and inference latency is not measured anywhere. Without latency data, it is impossible to determine whether throughput is bottlenecked by model inference time or by patch-application / build overhead. Without structured failure artifacts, identifying which error categories repeat across runs requires log grep and is not feed-able to the adaptive metrics system.
+
+- [ ] In `callLLMWithModel` (`main.go`), wrap the `http.Post` call with `start := time.Now()` / `latencyMs := time.Since(start).Milliseconds()` and include `latency_ms=%d` in the existing `token_usage` log event.
+  - Reference: `main.go:270-298`; the log event already records model, prompt tokens, and completion tokens.
+- [ ] Add `AvgInferenceLatencyMs float64` to `memory.RunSummary` and `memory.AdaptiveMetrics` in `memory/types.go`. Feed the per-call latency into `executionStats` during the run and roll it into the `RunSummary` at completion in `runExecutionMode`.
+- [ ] Replace the raw-text build failure artifact in `writeBuildFailure` (`main_observability.go`) with a JSON envelope:
+  ```
+  { "task_id": "…", "timestamp": "…", "retry": N, "error_category": "…", "error_lines": ["…"], "raw": "…" }
+  ```
+  Write to `logs/build_failures/<task_id>.json` (keep the existing `.log` path as an alias or remove it). Parse `classifyBuildFailure` and `compilerErrorLines` to populate the structured fields.
+  - Reference: `main_observability.go:writeBuildFailure`; `main_util.go:classifyBuildFailure`, `compilerErrorLines`.
+- [ ] Persist `AvgPatchConfidence` and `AvgPatchRisk` to `AdaptiveMetrics`, fed from `evaluatePatchConfidence` and `scorePatchRisk` in `recordSuccessfulPatch`.
+  - Reference: `main_exec.go:recordSuccessfulPatch` already calls both but discards the scores.
+- [ ] **Validation**: after 3 runs, confirm `adaptive_metrics.json` contains `avg_inference_latency_ms`; confirm `logs/build_failures/` contains `.json` files parseable by `encoding/json`. Run `go test -race ./...`.
+
+---
+
 ## Resolved Gaps (No Action Required)
 
 The following issues were previously documented in `GAPS.md` or `AUDIT.md` and are confirmed resolved in the current codebase:
