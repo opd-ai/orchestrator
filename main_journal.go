@@ -215,7 +215,7 @@ func updateTaskStatus(taskID, status string) error {
 	for i := range tf.Tasks {
 		if tf.Tasks[i].ID == taskID {
 			tf.Tasks[i].Status = status
-			saveTasks(tf)
+			mustSaveTasks(tf)
 			return nil
 		}
 	}

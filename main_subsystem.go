@@ -103,7 +103,7 @@ func taskSubsystem(task *Task) string {
 func buildSubsystemMap(tasks []Task) map[string][]int {
 	m := make(map[string][]int)
 	for i, t := range tasks {
-		if t.Status != "" {
+		if t.Status != "pending" {
 			continue
 		}
 		sub := taskSubsystem(&tasks[i])

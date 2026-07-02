@@ -65,7 +65,7 @@ func runExecutionMode() {
 		logError("journal_recovery_failed", "", err.Error())
 	}
 	if !resumeBranch {
-		ensureBranch()
+		ensureBranchOrFatal()
 	}
 	ensureTasksFile()
 
@@ -142,7 +142,7 @@ func checkRunLimits(start time.Time, taskCounter int, stats *executionStats) boo
 func advanceTaskFile(stats *executionStats) (TaskFile, *Task, loopAction) {
 	tf := loadTasks()
 	if mergeClusteredTasks(&tf) {
-		saveTasks(tf)
+		mustSaveTasks(tf)
 	}
 	task := nextExecutableTask(&tf)
 	if task == nil {
@@ -152,7 +152,7 @@ func advanceTaskFile(stats *executionStats) (TaskFile, *Task, loopAction) {
 	}
 	if task.MergedCount <= 1 && enforceTaskGranularity(&tf, task) {
 		logInfo("task_split_pre_execution", task.ID, "deterministic granularity enforcer")
-		saveTasks(tf)
+		mustSaveTasks(tf)
 		return tf, nil, actionSkip
 	}
 	return tf, task, actionContinue
@@ -164,7 +164,7 @@ func blockTask(tf *TaskFile, task *Task, stats *executionStats) {
 	stats.tasksBlocked++
 	stats.stability.recordBlock()
 	recordSubsystemOutcome(stats.subsystems, task, false)
-	saveTasks(*tf)
+	mustSaveTasks(*tf)
 }
 
 // setupTaskEnv logs the task start, de-escalates/re-escalates models and tiers,
@@ -202,12 +202,12 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 		task.RetryCount++
 		stats.totalRetries++
 		if task.RetryCount < maxRetries {
-			saveTasks(*tf) // persist incremented RetryCount so splitting threshold advances across iterations
+			mustSaveTasks(*tf) // persist incremented RetryCount so splitting threshold advances across iterations
 			return diff, context, contextFiles, false
 		}
 		logInfo("splitting_due_to_size", task.ID, "")
 		splitTask(tf, task)
-		saveTasks(*tf)
+		mustSaveTasks(*tf)
 	} else {
 		writeRejectedPatch(task.ID, diff)
 		logError("patch_rejected", task.ID, err.Error())
@@ -262,7 +262,7 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 	recordSubsystemPatchMetrics(task, diff)
 	cacheTaskResult(taskCache, task, diff)
 	saveTaskCache(taskCache)
-	saveTasks(*tf)
+	mustSaveTasks(*tf)
 }
 
 // execute runs the main task-execution loop, returning a summary of all work
@@ -354,7 +354,7 @@ func resolveBuildFailure(
 	}
 	logInfo("task_splitting", task.ID, "max retries exceeded")
 	splitTask(tf, task)
-	saveTasks(*tf)
+	mustSaveTasks(*tf)
 }
 
 // attemptBuildFixRetries iterates FIX prompts until the build passes or the retry budget is spent.
@@ -408,7 +408,7 @@ func attemptBuildFixRetries(
 			stats.tasksCompleted++
 			cacheTaskResult(taskCache, task, fixDiff)
 			saveTaskCache(taskCache)
-			saveTasks(*tf)
+			mustSaveTasks(*tf)
 			return appliedFixDiffs, true
 		}
 		stats.recordBuildFailure(buildOut)
@@ -482,7 +482,7 @@ func tryTrivialFixes(
 	stats.tasksCompleted++
 	cacheTaskResult(taskCache, task, diff)
 	saveTaskCache(taskCache)
-	saveTasks(*tf)
+	mustSaveTasks(*tf)
 	return "", nil
 }
 
