@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -464,17 +465,18 @@ func ensureCleanWorkspace(taskID string) error {
 	}
 
 	logInfo("dirty_workspace_detected", taskID, "")
+	logInfo("dirty_workspace_resetting", taskID, "resetting tracked and untracked files")
 	if out, err := exec.Command("git", "checkout", "--", ".").CombinedOutput(); err != nil {
-		return fmt.Errorf("git checkout -- .: %w (%s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to reset tracked workspace (git checkout -- .): %w (%s)", err, sanitizeCommandOutput(out))
 	}
 	cleanArgs := []string{
 		"clean", "-fd",
-		"--exclude=tasks.json",
-		"--exclude=orchestrator.log",
-		"--exclude=orchestrator-journal.json",
+		"--exclude=" + tasksFile,
+		"--exclude=" + logFile,
+		"--exclude=" + journalFile,
 	}
 	if out, err := exec.Command("git", cleanArgs...).CombinedOutput(); err != nil {
-		return fmt.Errorf("git clean: %w (%s)", err, strings.TrimSpace(string(out)))
+		return fmt.Errorf("failed to clean untracked workspace files (git clean): %w (%s)", err, sanitizeCommandOutput(out))
 	}
 	return nil
 }
@@ -493,12 +495,22 @@ func workspaceDirty() (bool, error) {
 func commandMarksDirty(name string, args ...string) (bool, error) {
 	cmd := exec.Command(name, args...)
 	if err := cmd.Run(); err != nil {
-		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 1 {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
 			return true, nil
 		}
 		return false, err
 	}
 	return false, nil
+}
+
+func sanitizeCommandOutput(out []byte) string {
+	clean := strings.TrimSpace(string(out))
+	clean = strings.ReplaceAll(clean, "\n", " | ")
+	if clean == "" {
+		return "no command output"
+	}
+	return clean
 }
 
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {

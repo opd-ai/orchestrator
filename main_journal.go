@@ -106,7 +106,7 @@ func recoverExecutionJournal() error {
 
 	switch entry.Step {
 	case journalStepPatched:
-		if entry.PatchDiff != "" && !dryRun {
+		if entry.PatchDiff != "" {
 			if err := revertPatch(entry.PatchDiff); err != nil {
 				return err
 			}
@@ -115,9 +115,6 @@ func recoverExecutionJournal() error {
 		logInfo("journal_recovered_reverted", entry.TaskID, "")
 		return clearExecutionJournal()
 	case journalStepBuilt:
-		if dryRun {
-			return clearExecutionJournal()
-		}
 		task, err := taskForRecovery(entry.TaskID)
 		if err != nil {
 			return err
@@ -141,7 +138,7 @@ func recoverExecutionJournal() error {
 }
 
 func taskForRecovery(taskID string) (*Task, error) {
-	task := &Task{ID: taskID, Description: "recover interrupted task"}
+	task := &Task{ID: taskID, Description: fmt.Sprintf("recover interrupted task %s", taskID)}
 	tf, ok, err := loadTasksForRecovery()
 	if err != nil || !ok {
 		return task, err

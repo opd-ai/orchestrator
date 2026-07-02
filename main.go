@@ -28,6 +28,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -177,21 +178,31 @@ func nextTaskIDIndex(tasks []Task, prefix string) int {
 }
 
 func taskPriority(task *Task) int {
-	if strings.HasPrefix(strings.ToUpper(task.Description), "[AUDIT-HIGH]") ||
-		strings.HasPrefix(strings.ToUpper(task.Description), "[AUDIT-CRITICAL]") {
+	upperDesc := strings.ToUpper(task.Description)
+	if strings.HasPrefix(upperDesc, "[AUDIT-HIGH]") ||
+		strings.HasPrefix(upperDesc, "[AUDIT-CRITICAL]") {
 		return 0
 	}
 	return 1
 }
 
 func extractMentionedGoFiles(text string) []string {
-	matches := goFileMentionRe.FindAllString(text, -1)
-	if len(matches) == 0 {
+	indices := goFileMentionRe.FindAllStringIndex(text, -1)
+	if len(indices) == 0 {
 		return nil
 	}
-	seen := make(map[string]bool, len(matches))
-	files := make([]string, 0, len(matches))
-	for _, match := range matches {
+	seen := make(map[string]bool, len(indices))
+	files := make([]string, 0, len(indices))
+	for _, idx := range indices {
+		start, end := idx[0], idx[1]
+		if (start > 0 && (text[start-1] == '.' || text[start-1] == '/')) ||
+			(end < len(text) && (text[end] == '.' || text[end] == '/')) {
+			continue
+		}
+		match := text[start:end]
+		if !isSafeMentionedGoFile(match) {
+			continue
+		}
 		if seen[match] {
 			continue
 		}
@@ -200,6 +211,14 @@ func extractMentionedGoFiles(text string) []string {
 	}
 	sort.Strings(files)
 	return files
+}
+
+func isSafeMentionedGoFile(path string) bool {
+	if strings.TrimSpace(path) == "" || filepath.IsAbs(path) {
+		return false
+	}
+	clean := filepath.Clean(path)
+	return clean != ".." && !strings.HasPrefix(clean, ".."+string(filepath.Separator))
 }
 
 func depsSatisfied(tf *TaskFile, t *Task) bool {

@@ -67,7 +67,7 @@ func TestNextExecutableTaskPrioritizesAuditFindings(t *testing.T) {
 }
 
 func TestExtractMentionedGoFiles(t *testing.T) {
-	got := extractMentionedGoFiles("Update main_exec.go and audit/context.go and main_exec.go")
+	got := extractMentionedGoFiles("Update main_exec.go and audit/context.go and ../unsafe.go and main_exec.go")
 	if len(got) != 2 {
 		t.Fatalf("expected 2 unique files, got %v", got)
 	}
