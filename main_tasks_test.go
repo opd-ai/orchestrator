@@ -192,6 +192,58 @@ func TestSplitOversizedDescriptionSequentialDeps(t *testing.T) {
 	}
 }
 
+func TestReplaceTaskRewritesDownstreamDepsToReplacementBoundary(t *testing.T) {
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "A", Description: "parent", Status: "pending"},
+			{ID: "B", Description: "dependent", Status: "pending", DependsOn: []string{"A"}},
+		},
+	}
+	replacements := []Task{
+		{ID: "A.1", Status: "pending"},
+		{ID: "A.2", Status: "pending", DependsOn: []string{"A.1"}},
+	}
+
+	replaceTask(&tf, "A", replacements)
+
+	if len(tf.Tasks) != 3 {
+		t.Fatalf("expected replacement tasks added, got %d tasks", len(tf.Tasks))
+	}
+	dependent := taskByID(t, &tf, "B")
+	if containsDep(dependent.DependsOn, "A") {
+		t.Fatalf("expected original dependency removed, got %v", dependent.DependsOn)
+	}
+	if !containsDep(dependent.DependsOn, "A.2") {
+		t.Fatalf("expected downstream dependency rewritten to final replacement task, got %v", dependent.DependsOn)
+	}
+	_ = taskByID(t, &tf, "A.1")
+	_ = taskByID(t, &tf, "A.2")
+}
+
+func TestReplaceTaskParallelBoundariesMustAllComplete(t *testing.T) {
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "A", Description: "parent", Status: "pending"},
+			{ID: "B", Description: "dependent", Status: "pending", DependsOn: []string{"A"}},
+		},
+	}
+	replacements := []Task{
+		{ID: "A.1", Status: "complete"},
+		{ID: "A.2", Status: "pending"},
+	}
+
+	replaceTask(&tf, "A", replacements)
+
+	dependent := taskByID(t, &tf, "B")
+	if depsSatisfied(&tf, dependent) {
+		t.Fatalf("expected dependent task to remain blocked until all replacement tasks complete: %+v", dependent)
+	}
+	taskByID(t, &tf, "A.2").Status = "complete"
+	if !depsSatisfied(&tf, dependent) {
+		t.Fatalf("expected dependent task ready after all replacement tasks complete: %+v", dependent)
+	}
+}
+
 func TestInjectFileOverlapDeps(t *testing.T) {
 	tasks := []Task{
 		{ID: "A1", Files: []string{"main.go"}, Status: "pending"},
@@ -216,4 +268,15 @@ func containsDep(deps []string, id string) bool {
 		}
 	}
 	return false
+}
+
+func taskByID(t *testing.T, tf *TaskFile, id string) *Task {
+	t.Helper()
+	for i := range tf.Tasks {
+		if tf.Tasks[i].ID == id {
+			return &tf.Tasks[i]
+		}
+	}
+	t.Fatalf("task %q not found", id)
+	return nil
 }

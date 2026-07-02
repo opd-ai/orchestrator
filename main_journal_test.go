@@ -163,3 +163,123 @@ func TestRecoverExecutionJournalBuiltCommitsPatch(t *testing.T) {
 		t.Fatalf("expected sample.txt committed, got git status %q", statusOut)
 	}
 }
+
+func TestRecoverExecutionJournalBuiltSkipsUnrelatedWorkspaceChanges(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	initGitRepo(t, tmpDir)
+
+	path := filepath.Join(tmpDir, "sample.txt")
+	otherPath := filepath.Join(tmpDir, "other.txt")
+	if err := os.WriteFile(path, []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write sample: %v", err)
+	}
+	if err := os.WriteFile(otherPath, []byte("base\n"), 0o644); err != nil {
+		t.Fatalf("write other: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte("orchestrator-journal.json\n"), 0o644); err != nil {
+		t.Fatalf("write gitignore: %v", err)
+	}
+	saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}})
+	runCmd(t, "git", "add", ".")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	diff := strings.Join([]string{
+		"diff --git a/sample.txt b/sample.txt",
+		"--- a/sample.txt",
+		"+++ b/sample.txt",
+		"@@ -1 +1 @@",
+		"-a",
+		"+b",
+	}, "\n") + "\n"
+	if err := applyPatch(diff); err != nil {
+		t.Fatalf("applyPatch: %v", err)
+	}
+	if err := os.WriteFile(otherPath, []byte("dirty\n"), 0o644); err != nil {
+		t.Fatalf("write other dirty: %v", err)
+	}
+	if err := recordExecutionJournal("T1", journalStepBuilt, diff); err != nil {
+		t.Fatalf("recordExecutionJournal: %v", err)
+	}
+
+	if err := recoverExecutionJournal(); err != nil {
+		t.Fatalf("recoverExecutionJournal: %v", err)
+	}
+
+	statusOut := runCmd(t, "git", "status", "--short")
+	if strings.Contains(statusOut, "sample.txt") {
+		t.Fatalf("expected sample.txt committed, got git status %q", statusOut)
+	}
+	if !strings.Contains(statusOut, "other.txt") {
+		t.Fatalf("expected unrelated file to remain dirty, got git status %q", statusOut)
+	}
+
+	otherHead := runCmd(t, "git", "show", "HEAD:other.txt")
+	if otherHead != "base\n" {
+		t.Fatalf("expected other.txt unchanged in HEAD, got %q", otherHead)
+	}
+}
+
+func TestRecoverExecutionJournalBuiltFailsOnWorkspaceMismatch(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	initGitRepo(t, tmpDir)
+
+	path := filepath.Join(tmpDir, "sample.txt")
+	if err := os.WriteFile(path, []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write sample: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte("orchestrator-journal.json\n"), 0o644); err != nil {
+		t.Fatalf("write gitignore: %v", err)
+	}
+	saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}})
+	runCmd(t, "git", "add", ".")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	diff := strings.Join([]string{
+		"diff --git a/sample.txt b/sample.txt",
+		"--- a/sample.txt",
+		"+++ b/sample.txt",
+		"@@ -1 +1 @@",
+		"-a",
+		"+b",
+	}, "\n") + "\n"
+	if err := applyPatch(diff); err != nil {
+		t.Fatalf("applyPatch: %v", err)
+	}
+	if err := recordExecutionJournal("T1", journalStepBuilt, diff); err != nil {
+		t.Fatalf("recordExecutionJournal: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("c\n"), 0o644); err != nil {
+		t.Fatalf("mutate sample: %v", err)
+	}
+
+	err = recoverExecutionJournal()
+	if err == nil {
+		t.Fatal("expected workspace mismatch to fail recovery")
+	}
+	if !strings.Contains(err.Error(), "recovered patch no longer matches workspace") {
+		t.Fatalf("expected workspace mismatch error, got %v", err)
+	}
+
+	logOut := runCmd(t, "git", "log", "--oneline", "-1")
+	if strings.Contains(logOut, "Task T1: change sample") {
+		t.Fatalf("expected no recovery commit, got %q", logOut)
+	}
+}

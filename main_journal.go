@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -117,26 +119,78 @@ func recoverExecutionJournal() error {
 		logInfo("journal_recovered_reverted", entry.TaskID, "")
 		return clearExecutionJournal()
 	case journalStepBuilt:
-		task, err := taskForRecovery(entry.TaskID)
-		if err != nil {
-			return err
-		}
-		if err := gitCommit(task); err != nil {
-			return err
-		}
-		if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
-			return err
-		}
-		if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
-			return err
-		}
-		logInfo("journal_recovered_committed", entry.TaskID, "")
-		return clearExecutionJournal()
+		return recoverBuiltJournal(entry)
 	case journalStepCommitted:
 		return clearExecutionJournal()
 	default:
 		return fmt.Errorf("unknown journal step %q", entry.Step)
 	}
+}
+
+func recoverBuiltJournal(entry executionJournal) error {
+	task, err := taskForRecovery(entry.TaskID)
+	if err != nil {
+		return err
+	}
+	files, err := validateRecoveredBuiltPatch(entry)
+	if err != nil {
+		return err
+	}
+	if err := gitCommitFiles(task, files); err != nil {
+		return err
+	}
+	if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
+		return err
+	}
+	if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
+		return err
+	}
+	logInfo("journal_recovered_committed", entry.TaskID, "")
+	return clearExecutionJournal()
+}
+
+func validateRecoveredBuiltPatch(entry executionJournal) ([]string, error) {
+	if entry.PatchDiff == "" {
+		return nil, errors.New("journal missing patch diff")
+	}
+	if got := hashString(entry.PatchDiff); got != entry.PatchHash {
+		return nil, fmt.Errorf("journal patch hash mismatch: got %s want %s", got, entry.PatchHash)
+	}
+	files := filesTouched(entry.PatchDiff)
+	if len(files) == 0 {
+		return nil, errors.New("journal patch touches no files")
+	}
+	if err := reversePatchDryRun(entry.PatchDiff); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+func reversePatchDryRun(diff string) error {
+	tmpFile, err := os.CreateTemp("", "orchestrator-recovery-*.patch")
+	if err != nil {
+		return fmt.Errorf("create temporary recovery patch: %w", err)
+	}
+	tmpName := tmpFile.Name()
+	defer func() {
+		_ = os.Remove(tmpName)
+	}()
+	if _, err := tmpFile.WriteString(diff); err != nil {
+		_ = tmpFile.Close()
+		return err
+	}
+	if err := tmpFile.Close(); err != nil {
+		return err
+	}
+	out, err := exec.Command("patch", "-p1", "-R", "--dry-run", "-i", tmpName).CombinedOutput()
+	if err != nil {
+		msg := strings.TrimSpace(string(out))
+		if msg == "" {
+			msg = err.Error()
+		}
+		return fmt.Errorf("workspace validation failed: recovered patch no longer matches workspace: %s", msg)
+	}
+	return nil
 }
 
 func taskForRecovery(taskID string) (*Task, error) {

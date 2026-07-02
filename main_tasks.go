@@ -66,9 +66,21 @@ Task:
 
 // replaceTask swaps one task ID for a new set of replacement tasks.
 func replaceTask(tf *TaskFile, id string, newTasks []Task) {
+	replacementIDs := replacementBoundaryIDs(newTasks)
+	// If the boundary set is empty (e.g. all replacement tasks depend on each
+	// other, or every task is depended on by another), fall back to all
+	// replacement IDs so downstream tasks are not incorrectly unblocked by
+	// having their old dependency silently removed without gaining a new one.
+	if len(replacementIDs) == 0 && len(newTasks) > 0 {
+		replacementIDs = make([]string, len(newTasks))
+		for i, t := range newTasks {
+			replacementIDs[i] = t.ID
+		}
+	}
 	var updated []Task
 	for _, t := range tf.Tasks {
 		if t.ID != id {
+			t.DependsOn = rewriteTaskDeps(t.DependsOn, id, replacementIDs)
 			updated = append(updated, t)
 		}
 	}
@@ -183,6 +195,47 @@ func appendDepUnique(deps []string, id string) []string {
 		}
 	}
 	return append(deps, id)
+}
+
+func rewriteTaskDeps(deps []string, oldID string, replacementIDs []string) []string {
+	if len(deps) == 0 {
+		return deps
+	}
+	updated := make([]string, 0, len(deps)+len(replacementIDs))
+	replaced := false
+	for _, dep := range deps {
+		if dep != oldID {
+			updated = appendDepUnique(updated, dep)
+			continue
+		}
+		replaced = true
+		for _, replacementID := range replacementIDs {
+			updated = appendDepUnique(updated, replacementID)
+		}
+	}
+	if !replaced {
+		return deps
+	}
+	return updated
+}
+
+func replacementBoundaryIDs(tasks []Task) []string {
+	if len(tasks) == 0 {
+		return nil
+	}
+	referenced := make(map[string]bool, len(tasks))
+	for _, task := range tasks {
+		for _, dep := range task.DependsOn {
+			referenced[dep] = true
+		}
+	}
+	ids := make([]string, 0, len(tasks))
+	for _, task := range tasks {
+		if !referenced[task.ID] {
+			ids = append(ids, task.ID)
+		}
+	}
+	return ids
 }
 
 // injectFileOverlapDeps adds dependency edges between pending tasks that share a
