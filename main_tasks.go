@@ -265,6 +265,7 @@ func tempForRetry(retryCount int) float64 {
 	}
 }
 
+// previousAttemptBlock formats the capped previous diff preview for FIX prompts.
 func previousAttemptBlock(previousDiff string) string {
 	preview := firstDiffLines(previousDiff, previousAttemptLineLimit)
 	if preview == "" {
@@ -273,6 +274,7 @@ func previousAttemptBlock(previousDiff string) string {
 	return "PREVIOUS_ATTEMPT (failed):\n" + preview
 }
 
+// firstDiffLines returns the first limit lines from a diff, or an empty string when no preview is available.
 func firstDiffLines(diff string, limit int) string {
 	if limit <= 0 {
 		return ""
