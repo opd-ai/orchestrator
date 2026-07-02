@@ -301,17 +301,23 @@ func gatherFileContext(files []string) string {
 
 // extractSignatures returns only the declaration lines from data: lines beginning
 // with "func ", "type ", "var ", or "const ". Used as a fallback when a file
-// exceeds maxBytesPerFile so the model still sees the callable surface.
+// exceeds maxBytesPerFile so the model still sees the callable surface. Output is
+// capped at maxBytesPerFile bytes to enforce the per-file prompt budget.
 func extractSignatures(data []byte) []byte {
 	lines := bytes.Split(data, []byte("\n"))
 	out := make([][]byte, 0, len(lines))
+	total := 0
 	for _, line := range lines {
 		t := bytes.TrimLeft(line, " \t")
 		if bytes.HasPrefix(t, []byte("func ")) ||
 			bytes.HasPrefix(t, []byte("type ")) ||
 			bytes.HasPrefix(t, []byte("var ")) ||
 			bytes.HasPrefix(t, []byte("const ")) {
+			if total+len(line)+1 > maxBytesPerFile {
+				break
+			}
 			out = append(out, line)
+			total += len(line) + 1
 		}
 	}
 	return bytes.Join(out, []byte("\n"))

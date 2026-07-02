@@ -4,6 +4,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	"github.com/opd-ai/orchestrator/audit"
 )
@@ -86,12 +87,18 @@ func funcScopedContext(key string, sm *audit.SymbolMap, taskFiles []string) stri
 }
 
 // truncateFuncContext caps a function body context string at maxBytesPerFile bytes.
-// When truncation occurs, a marker comment is appended so the model is aware.
+// Truncation is performed on a rune boundary to avoid splitting multi-byte UTF-8
+// sequences. When truncation occurs, a marker comment is appended so the model is aware.
 func truncateFuncContext(ctx string) string {
 	if len(ctx) <= maxBytesPerFile {
 		return ctx
 	}
-	return ctx[:maxBytesPerFile] + "\n// ... (truncated)"
+	// Walk back from maxBytesPerFile until we land on the start of a rune.
+	n := maxBytesPerFile
+	for n > 0 && !utf8.RuneStart(ctx[n]) {
+		n--
+	}
+	return ctx[:n] + "\n// ... (truncated)"
 }
 
 // minSymbolNameLen is the minimum character length a function name must have to be

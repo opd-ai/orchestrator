@@ -10,15 +10,15 @@ var plannerMemoryContext string
 
 const promptCharBudget = 5300
 
-// compressPrompt trims whitespace and hard-caps the prompt at promptCharBudget runes.
-// Budget allocation (approximate):
+// compressPrompt trims whitespace and hard-caps the entire prompt at promptCharBudget
+// runes. The cap applies to the combined prompt (memory preamble + execution block +
+// file context). Typical allocation within that budget (approximate):
 //   - memory preamble (adaptive metrics + invariant summary): ~400 chars
 //   - execution block (task description + constraints):        ~300 chars
-//   - file context:                                           ~5300 chars (this cap)
+//   - file context (remainder):                               ~4600 chars
 //
-// Total budget is therefore ~6000 chars, matching the maxPromptChars ceiling in
-// main_token_budget.go. Reducing this constant leaves headroom for the preamble and
-// execution block so they are never silently truncated.
+// Keeping promptCharBudget below the maxPromptChars ceiling in main_token_budget.go
+// leaves headroom so the preamble and execution block are never silently truncated.
 
 func injectMemoryIntoPlanner(memoryContext string) {
 	plannerMemoryContext = strings.TrimSpace(memoryContext)

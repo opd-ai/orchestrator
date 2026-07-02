@@ -54,7 +54,7 @@ Task:
 	for i := range subtasks {
 		subtasks[i].ID = fmt.Sprintf("%s%d", prefix, i+1)
 		subtasks[i].Status = "pending"
-		subtasks[i].DependsOn = task.DependsOn
+		subtasks[i].DependsOn = append([]string(nil), task.DependsOn...)
 	}
 	// Wire sequential deps so subtask[i] cannot start until subtask[i-1] commits.
 	for i := 1; i < len(subtasks); i++ {
@@ -130,7 +130,7 @@ func splitMultiFileTask(task *Task) []Task {
 			ID:          fmt.Sprintf("%s%d", prefix, i+1),
 			Description: fmt.Sprintf("%s (%s)", task.Description, file),
 			Files:       []string{file},
-			DependsOn:   task.DependsOn,
+			DependsOn:   append([]string(nil), task.DependsOn...),
 			Status:      "pending",
 		})
 	}
@@ -161,7 +161,7 @@ func splitOversizedDescription(task *Task) []Task {
 			ID:          fmt.Sprintf("%s%d", prefix, len(subtasks)+1),
 			Description: part,
 			Files:       append([]string(nil), task.Files...),
-			DependsOn:   task.DependsOn,
+			DependsOn:   append([]string(nil), task.DependsOn...),
 			Status:      "pending",
 		})
 	}
