@@ -153,8 +153,12 @@ func typeSpecSymbol(pkgPath string, s *ast.TypeSpec, gdHasDoc bool) []SymbolInfo
 	}
 	hasDoc := gdHasDoc || (s.Doc != nil && len(s.Doc.List) > 0) || (s.Comment != nil && len(s.Comment.List) > 0)
 	return []SymbolInfo{{
-		Name: s.Name.Name, Kind: kind, Exported: true,
-		Package: pkgPath, HasDoc: hasDoc, Methods: methods,
+		Name:     s.Name.Name,
+		Kind:     kind,
+		Exported: true,
+		Package:  pkgPath,
+		HasDoc:   hasDoc,
+		Methods:  methods,
 	}}
 }
 
@@ -168,8 +172,11 @@ func valueSpecSymbols(pkgPath string, tok token.Token, s *ast.ValueSpec, gdHasDo
 			continue
 		}
 		symbols = append(symbols, SymbolInfo{
-			Name: name.Name, Kind: kind, Exported: true,
-			Package: pkgPath, HasDoc: hasDoc,
+			Name:     name.Name,
+			Kind:     kind,
+			Exported: true,
+			Package:  pkgPath,
+			HasDoc:   hasDoc,
 		})
 	}
 	return symbols

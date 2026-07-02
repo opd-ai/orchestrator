@@ -189,6 +189,7 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 		task.RetryCount++
 		stats.totalRetries++
 		if task.RetryCount < maxRetries {
+			saveTasks(*tf) // persist incremented RetryCount so splitting threshold advances across iterations
 			return diff, context, contextFiles, false
 		}
 		logInfo("splitting_due_to_size", task.ID, "")
