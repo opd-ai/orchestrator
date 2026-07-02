@@ -21,7 +21,7 @@ func validatePatch(diff string, allowedFiles []string, task *Task) error {
 		func() error { return validatePatchSize(diff, task) },
 		func() error { return validateTouchedFiles(touchedFiles, allowedFiles, task) },
 		func() error { return validatePatchShape(diff, task) },
-		func() error { return validateDeletionRatio(diff) },
+		func() error { return validateDeletionRatio(diff, task) },
 		func() error { return validateDSLSchema(diff, task.ChangeType) },
 		func() error { return validateSimulation(diff, touchedFiles, task) },
 	}
@@ -186,11 +186,30 @@ func resolvePathFromExistingParent(path string) (string, error) {
 	}
 }
 
-func validateDeletionRatio(diff string) error {
-	if deletionRatio(diff) > 0.30 {
-		return errors.New("patch deletes more than 30% of changed lines")
+func validateDeletionRatio(diff string, task *Task) error {
+	cap := deletionCapForChangeType(task.ChangeType)
+	if deletionRatio(diff) > cap {
+		return fmt.Errorf("patch deletes more than %.0f%% of changed lines", cap*100)
 	}
 	return nil
+}
+
+// deletionCapForChangeType returns the maximum fraction of changed lines that may
+// be deletions for the given ChangeType. DELETE_FUNCTION tasks legitimately remove
+// large bodies of code, so they receive a higher cap. INSERT_FUNCTION and ADD_IMPORT
+// should rarely need deletions, so they receive a tighter cap. All other types
+// retain the original 30% guard.
+func deletionCapForChangeType(ct ChangeType) float64 {
+	switch ct {
+	case ChangeTypeDeleteFunction:
+		return 0.70
+	case ChangeTypeModifyFunction, ChangeTypeModifyStruct:
+		return 0.50
+	case ChangeTypeInsertFunction, ChangeTypeAddImport:
+		return 0.10
+	default:
+		return 0.30
+	}
 }
 
 func validatePatchShape(diff string, task *Task) error {

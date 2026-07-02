@@ -207,15 +207,15 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: `validateDeletionRatio` applies a hard 30 % deletion cap to all patches regardless of semantic intent. A `MODIFY_FUNCTION` task that rewrites a function body legitimately deletes 40–60 % of lines while replacing them with cleaner code. The hard cap forces such tasks into a split-and-rewrite pattern requiring 2–3× more inference calls. Conversely, `INSERT_FUNCTION` tasks should be held to a stricter cap (≤10 % deletions) because insertions should rarely need to remove existing code.
 
-- [ ] Change `validateDeletionRatio(diff string)` to `validateDeletionRatio(diff string, task *Task)` in `main_validatepatch.go`. Compute the cap via a new `deletionCapForChangeType(ct ChangeType) float64` helper:
+- [x] Change `validateDeletionRatio(diff string)` to `validateDeletionRatio(diff string, task *Task)` in `main_validatepatch.go`. Compute the cap via a new `deletionCapForChangeType(ct ChangeType) float64` helper:
   - `DELETE_FUNCTION` → `0.70`
   - `MODIFY_FUNCTION`, `MODIFY_STRUCT` → `0.50`
   - `INSERT_FUNCTION`, `ADD_IMPORT` → `0.10`
   - `GENERAL` or unset → `0.30` (current behaviour unchanged)
-- [ ] Add `DELETE_FUNCTION ChangeType = "DELETE_FUNCTION"` to `main_dsl.go` alongside the existing change type constants.
-- [ ] Update the `validatePatch` call to `validateDeletionRatio` to pass the task. Update `validateDSLSchema` to accept `DELETE_FUNCTION` as a valid type.
+- [x] Add `DELETE_FUNCTION ChangeType = "DELETE_FUNCTION"` to `main_dsl.go` alongside the existing change type constants.
+- [x] Update the `validatePatch` call to `validateDeletionRatio` to pass the task. Update `validateDSLSchema` to accept `DELETE_FUNCTION` as a valid type.
   - Reference: `main_validatepatch.go:runValidationSteps` — the deletion-ratio step at position 6 currently passes no task context.
-- [ ] **Validation**: audit the last 20 entries in `logs/rejected_patches/` for the rejection reason `"patch deletes more than 30%"`. Confirm the tiered cap would have accepted the legitimate refactors. Run `go test -race ./...` after the change.
+- [x] **Validation**: audit the last 20 entries in `logs/rejected_patches/` for the rejection reason `"patch deletes more than 30%"`. Confirm the tiered cap would have accepted the legitimate refactors. Run `go test -race ./...` after the change.
 
 ---
 
@@ -223,18 +223,18 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: Build failure artifacts are written as raw text (`.log` files), and inference latency is not measured anywhere. Without latency data, it is impossible to determine whether throughput is bottlenecked by model inference time or by patch-application / build overhead. Without structured failure artifacts, identifying which error categories repeat across runs requires log grep and is not feed-able to the adaptive metrics system.
 
-- [ ] In `callLLMWithModel` (`main.go`), wrap the `http.Post` call with `start := time.Now()` / `latencyMs := time.Since(start).Milliseconds()` and include `latency_ms=%d` in the existing `token_usage` log event.
+- [x] In `callLLMWithModel` (`main.go`), wrap the `http.Post` call with `start := time.Now()` / `latencyMs := time.Since(start).Milliseconds()` and include `latency_ms=%d` in the existing `token_usage` log event.
   - Reference: `main.go:270-298`; the log event already records model, prompt tokens, and completion tokens.
-- [ ] Add `AvgInferenceLatencyMs float64` to `memory.RunSummary` and `memory.AdaptiveMetrics` in `memory/types.go`. Feed the per-call latency into `executionStats` during the run and roll it into the `RunSummary` at completion in `runExecutionMode`.
-- [ ] Replace the raw-text build failure artifact in `writeBuildFailure` (`main_observability.go`) with a JSON envelope:
+- [x] Add `AvgInferenceLatencyMs float64` to `memory.RunSummary` and `memory.AdaptiveMetrics` in `memory/types.go`. Feed the per-call latency into `executionStats` during the run and roll it into the `RunSummary` at completion in `runExecutionMode`.
+- [x] Replace the raw-text build failure artifact in `writeBuildFailure` (`main_observability.go`) with a JSON envelope:
   ```
   { "task_id": "…", "timestamp": "…", "retry": N, "error_category": "…", "error_lines": ["…"], "raw": "…" }
   ```
   Write to `logs/build_failures/<task_id>.json` (keep the existing `.log` path as an alias or remove it). Parse `classifyBuildFailure` and `compilerErrorLines` to populate the structured fields.
   - Reference: `main_observability.go:writeBuildFailure`; `main_util.go:classifyBuildFailure`, `compilerErrorLines`.
-- [ ] Persist `AvgPatchConfidence` and `AvgPatchRisk` to `AdaptiveMetrics`, fed from `evaluatePatchConfidence` and `scorePatchRisk` in `recordSuccessfulPatch`.
+- [x] Persist `AvgPatchConfidence` and `AvgPatchRisk` to `AdaptiveMetrics`, fed from `evaluatePatchConfidence` and `scorePatchRisk` in `recordSuccessfulPatch`.
   - Reference: `main_exec.go:recordSuccessfulPatch` already calls both but discards the scores.
-- [ ] **Validation**: after 3 runs, confirm `adaptive_metrics.json` contains `avg_inference_latency_ms`; confirm `logs/build_failures/` contains `.json` files parseable by `encoding/json`. Run `go test -race ./...`.
+- [x] **Validation**: after 3 runs, confirm `adaptive_metrics.json` contains `avg_inference_latency_ms`; confirm `logs/build_failures/` contains `.json` files parseable by `encoding/json`. Run `go test -race ./...`.
 
 ---
 

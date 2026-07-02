@@ -32,11 +32,22 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync/atomic"
+	"time"
 
 	"github.com/opd-ai/orchestrator/audit"
 )
 
 var goFileMentionRe = regexp.MustCompile(`\b[\w./-]+\.go\b`)
+
+// inferenceLatencyTotal and inferenceCallCount accumulate per-call latency
+// across a run and are reset at the start of each execution mode.
+// Both are updated atomically because callLLMWithModel may be invoked from
+// speculative goroutines concurrently.
+var (
+	inferenceLatencyTotal int64
+	inferenceCallCount    int64
+)
 
 // maxBytesPerFile caps the number of bytes contributed by a single file to the
 // prompt context. Files exceeding this limit are replaced with their signature-only
@@ -405,10 +416,14 @@ func callLLMWithModel(prompt string, temperature float64, model string) string {
 		"temperature": temperature,
 	}
 	b, _ := json.Marshal(body)
+	start := time.Now()
 	resp, err := http.Post(llmEndpoint, "application/json", bytes.NewBuffer(b))
 	if err != nil {
 		logFatal("llm_call_failed", err.Error())
 	}
+	latencyMs := time.Since(start).Milliseconds()
+	atomic.AddInt64(&inferenceLatencyTotal, latencyMs)
+	atomic.AddInt64(&inferenceCallCount, 1)
 	defer resp.Body.Close()
 
 	out, _ := io.ReadAll(resp.Body)
@@ -430,8 +445,8 @@ func callLLMWithModel(prompt string, temperature float64, model string) string {
 		logError("llm_parse_failed", "", err.Error())
 	}
 	logInfo("token_usage", "", fmt.Sprintf(
-		"model=%s prompt=%d completion=%d total=%d",
-		model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens, parsed.Usage.TotalTokens,
+		"model=%s prompt=%d completion=%d total=%d latency_ms=%d",
+		model, parsed.Usage.PromptTokens, parsed.Usage.CompletionTokens, parsed.Usage.TotalTokens, latencyMs,
 	))
 	if len(parsed.Choices) == 0 {
 		logFatal("llm_empty_response", "no choices in LLM response")

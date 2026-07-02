@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"sync/atomic"
 )
 
 var missingImportPattern = regexp.MustCompile(`undefined:\s+[A-Za-z_]\w*\.`)
@@ -72,6 +73,22 @@ func averageRetries(totalRetries, tasks int) float64 {
 		return 0
 	}
 	return float64(totalRetries) / float64(tasks)
+}
+
+// averageFloat divides total by count; returns 0 when count is zero.
+func averageFloat(total float64, count int) float64 {
+	if count == 0 {
+		return 0
+	}
+	return total / float64(count)
+}
+
+// averageInferenceLatency returns the mean inference latency in milliseconds
+// across all callLLMWithModel calls in the current run.
+func averageInferenceLatency() float64 {
+	total := atomic.LoadInt64(&inferenceLatencyTotal)
+	count := atomic.LoadInt64(&inferenceCallCount)
+	return averageFloat(float64(total), int(count))
 }
 
 func mostModifiedFile(files map[string]int) string {

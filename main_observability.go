@@ -1,20 +1,49 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/opd-ai/orchestrator/memory"
 )
 
-func writeBuildFailure(taskID, output string) {
+// buildFailureArtifact is the structured JSON envelope written to
+// logs/build_failures/<task_id>.json for each build failure.
+type buildFailureArtifact struct {
+	TaskID        string   `json:"task_id"`
+	Timestamp     string   `json:"timestamp"`
+	Retry         int      `json:"retry"`
+	ErrorCategory string   `json:"error_category"`
+	ErrorLines    []string `json:"error_lines"`
+	Raw           string   `json:"raw"`
+}
+
+// writeBuildFailure writes a structured JSON artifact for a build failure.
+// retry is the task's RetryCount at the time of failure (0 for the first attempt).
+func writeBuildFailure(taskID, output string, retry int) {
 	if taskID == "" || output == "" {
 		return
 	}
 
-	path := filepath.Join("logs", "build_failures", taskID+".log")
-	writeArtifact(path, output)
+	artifact := buildFailureArtifact{
+		TaskID:        taskID,
+		Timestamp:     time.Now().UTC().Format(time.RFC3339),
+		Retry:         retry,
+		ErrorCategory: classifyBuildFailure(output),
+		ErrorLines:    compilerErrorLines(output),
+		Raw:           output,
+	}
+	data, err := json.MarshalIndent(artifact, "", "  ")
+	if err != nil {
+		logError("build_failure_marshal_failed", taskID, err.Error())
+		return
+	}
+
+	path := filepath.Join("logs", "build_failures", taskID+".json")
+	writeArtifact(path, string(data))
 }
 
 func writeRejectedPatch(taskID, diff string) {
