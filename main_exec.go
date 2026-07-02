@@ -226,6 +226,33 @@ func resolveBuildFailure(
 		return
 	}
 
+	appliedFixDiffs, resolved := attemptBuildFixRetries(
+		tf, task, context, contextFiles, buildOut, previousFailure, stats, taskCache,
+	)
+	if resolved {
+		return
+	}
+
+	if !dryRun {
+		if err := revertBuildFailurePatches(originalDiff, appliedFixDiffs); err != nil {
+			logError("patch_revert_failed", task.ID, err.Error())
+		}
+	}
+	logInfo("task_splitting", task.ID, "max retries exceeded")
+	splitTask(tf, task)
+	saveTasks(*tf)
+}
+
+func attemptBuildFixRetries(
+	tf *TaskFile,
+	task *Task,
+	context string,
+	contextFiles []string,
+	buildOut string,
+	previousFailure string,
+	stats *executionStats,
+	taskCache map[string]string,
+) ([]string, bool) {
 	appliedFixDiffs := make([]string, 0, maxRetries)
 	for task.RetryCount < maxRetries {
 		task.RetryCount++
@@ -235,11 +262,11 @@ func resolveBuildFailure(
 		fixDiff := fixTask(task, context, buildFixHints(buildOut))
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
 			writeRejectedPatch(task.ID, fixDiff)
-			break
+			return appliedFixDiffs, false
 		}
 		if !dryRun {
 			if err := applyPatch(fixDiff); err != nil {
-				break
+				return appliedFixDiffs, false
 			}
 			appliedFixDiffs = append(appliedFixDiffs, fixDiff)
 		}
@@ -252,7 +279,7 @@ func resolveBuildFailure(
 			cacheTaskResult(taskCache, task, fixDiff)
 			saveTaskCache(taskCache)
 			saveTasks(*tf)
-			return
+			return appliedFixDiffs, true
 		}
 		stats.recordBuildFailure(buildOut)
 		currentFailure := classifyBuildFailure(buildOut)
@@ -261,14 +288,7 @@ func resolveBuildFailure(
 		writeBuildFailure(task.ID, buildOut)
 	}
 
-	if !dryRun {
-		if err := revertBuildFailurePatches(originalDiff, appliedFixDiffs); err != nil {
-			logError("patch_revert_failed", task.ID, err.Error())
-		}
-	}
-	logInfo("task_splitting", task.ID, "max retries exceeded")
-	splitTask(tf, task)
-	saveTasks(*tf)
+	return appliedFixDiffs, false
 }
 
 func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string) error {

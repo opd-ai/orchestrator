@@ -71,15 +71,25 @@ func validateTouchedFiles(touchedFiles, allowedFiles []string, task *Task) error
 	if len(touchedFiles) > maxFilesTouched+fileCapBonus() {
 		return errors.New("too many files modified")
 	}
+	if err := validateTouchedFilePaths(touchedFiles); err != nil {
+		return err
+	}
+	if len(task.Files) == 0 {
+		return nil
+	}
+	return validateAllowedTouchedFiles(touchedFiles, allowedFiles)
+}
+
+func validateTouchedFilePaths(touchedFiles []string) error {
 	for _, file := range touchedFiles {
 		if err := validateTouchedFilePath(file); err != nil {
 			return err
 		}
 	}
-	if len(task.Files) == 0 {
-		return nil
-	}
+	return nil
+}
 
+func validateAllowedTouchedFiles(touchedFiles, allowedFiles []string) error {
 	allowed := make(map[string]bool, len(allowedFiles))
 	for _, file := range allowedFiles {
 		allowed[file] = true
