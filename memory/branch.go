@@ -22,6 +22,8 @@ func withMemoryWorktree(fn func(path string) error) error {
 
 	fnErr := fn(dir)
 
+	// Return the cleanup error only when fn succeeded; if fn failed, preserve
+	// that error as the primary signal and let os.RemoveAll handle the temp dir.
 	if removeErr := exec.Command("git", "worktree", "remove", "--force", dir).Run(); removeErr != nil && fnErr == nil {
 		return fmt.Errorf("remove memory worktree: %w", removeErr)
 	}
