@@ -107,3 +107,42 @@ func TestExecutionBlockFormat(t *testing.T) {
 		}
 	}
 }
+
+func TestBuildFixPromptIncludesPreviousAttemptPreview(t *testing.T) {
+	lines := make([]string, 0, 25)
+	for i := 1; i <= 25; i++ {
+		lines = append(lines, strings.Repeat("x", i))
+	}
+	prompt := buildFixPrompt(
+		&Task{ID: "R4", Description: "Fix build"},
+		"context",
+		"compiler error",
+		strings.Join(lines, "\n"),
+	)
+	if !strings.Contains(prompt, "PREVIOUS_ATTEMPT (failed):") {
+		t.Fatalf("expected previous attempt block in %q", prompt)
+	}
+	if !strings.Contains(prompt, lines[19]) {
+		t.Fatalf("expected twentieth line preview in %q", prompt)
+	}
+	if strings.Contains(prompt, lines[20]) {
+		t.Fatalf("expected preview to stop at 20 lines, got %q", prompt)
+	}
+}
+
+func TestTempForRetry(t *testing.T) {
+	tests := []struct {
+		retry int
+		want  float64
+	}{
+		{retry: 1, want: 0.3},
+		{retry: 2, want: 0.7},
+		{retry: 3, want: 0.5},
+		{retry: 5, want: 0.5},
+	}
+	for _, tt := range tests {
+		if got := tempForRetry(tt.retry); got != tt.want {
+			t.Fatalf("tempForRetry(%d) = %v, want %v", tt.retry, got, tt.want)
+		}
+	}
+}

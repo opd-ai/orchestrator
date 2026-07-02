@@ -358,12 +358,15 @@ func attemptBuildFixRetries(
 	taskCache map[string]string,
 ) ([]string, bool) {
 	appliedFixDiffs := make([]string, 0, maxRetries)
+	forceArchitectRetry := false
 	for task.RetryCount < maxRetries {
 		task.RetryCount++
 		stats.totalRetries++
 		logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-		fixDiff := fixTask(task, context, buildFixHints(buildOut))
+		previousDiff := previousRetryDiff(appliedFixDiffs)
+		temperature, model := fixRetrySettings(task.RetryCount, forceArchitectRetry)
+		fixDiff := fixTask(task, context, buildFixHints(buildOut), previousDiff, temperature, model)
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
 			// Validation happens before append/apply, so a rejected fix diff is not
 			// included in appliedFixDiffs.
@@ -394,7 +397,7 @@ func attemptBuildFixRetries(
 		}
 		stats.recordBuildFailure(buildOut)
 		currentFailure := classifyBuildFailure(buildOut)
-		stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
+		forceArchitectRetry = stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
 		previousFailure = currentFailure
 		writeBuildFailure(task.ID, buildOut)
 	}
@@ -614,15 +617,30 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 	s.failurePatterns[failure]++
 }
 
+// fixRetrySettings returns the temperature and model to use for the next fix attempt.
+func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
+	if forceArchitect {
+		return 0.8, roleModel(architectModelName)
+	}
+	return tempForRetry(retryCount), activeExecutorModel()
+}
+
+func previousRetryDiff(appliedFixDiffs []string) string {
+	if len(appliedFixDiffs) == 0 {
+		return ""
+	}
+	return appliedFixDiffs[len(appliedFixDiffs)-1]
+}
+
 // recordRetryConvergence tracks repeated failure categories across consecutive fix attempts.
-func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) {
+func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) bool {
 	if retryCount < 2 || current == "" {
-		return
+		return false
 	}
 
 	s.convergenceSamples++
 	if previous != current {
-		return
+		return false
 	}
 
 	s.convergenceAlerts++
@@ -632,4 +650,5 @@ func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, p
 		taskID,
 		fmt.Sprintf("retry %d repeated failure %q", retryCount, current),
 	)
+	return true
 }

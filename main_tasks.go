@@ -10,6 +10,7 @@ import (
 const (
 	oversizedTaskDescriptionLimit = 180
 	oversizedTaskConjunctionLimit = 2
+	previousAttemptLineLimit      = 20
 )
 
 ////////////////////////////////////////////////////////////
@@ -196,7 +197,13 @@ Return unified diff only.
 }
 
 // fixTask builds a retry prompt that asks the model to correct a failed patch.
-func fixTask(task *Task, context, hints string) string {
+func fixTask(task *Task, context, hints, previousDiff string, temperature float64, model string) string {
+	prompt := buildFixPrompt(task, context, hints, previousDiff)
+	return callLLMWithModel(promptWithMemory(prompt), temperature, model)
+}
+
+// buildFixPrompt assembles the retry prompt, including a preview of the previous failed diff when available.
+func buildFixPrompt(task *Task, context, hints, previousDiff string) string {
 	constraints := []string{
 		"Return a corrected unified diff",
 		"Keep patch minimal and atomic",
@@ -211,9 +218,11 @@ Task:
 Context:
 %s
 
+%s
+
 Return unified diff only.
-`, executionBlock("FIX", task, constraints, hints), task.Description, context)
-	return callLLMWithModel(promptWithMemory(prompt), 0.6, activeExecutorModel())
+`, executionBlock("FIX", task, constraints, hints), task.Description, context, previousAttemptBlock(previousDiff))
+	return strings.TrimSpace(prompt)
 }
 
 // executionBlock formats the structured execution metadata injected into EXECUTE and FIX prompts.
@@ -242,4 +251,38 @@ func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, f
 		b.WriteString("FAIL_REASON:\n")
 		b.WriteString(failReason + "\n")
 	}
+}
+
+// tempForRetry returns the retry temperature profile for the FIX loop.
+func tempForRetry(retryCount int) float64 {
+	switch retryCount {
+	case 1:
+		return 0.3
+	case 2:
+		return 0.7
+	default:
+		return 0.5
+	}
+}
+
+func previousAttemptBlock(previousDiff string) string {
+	preview := firstDiffLines(previousDiff, previousAttemptLineLimit)
+	if preview == "" {
+		return ""
+	}
+	return "PREVIOUS_ATTEMPT (failed):\n" + preview
+}
+
+func firstDiffLines(diff string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(diff), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return ""
+	}
+	if len(lines) > limit {
+		lines = lines[:limit]
+	}
+	return strings.Join(lines, "\n")
 }

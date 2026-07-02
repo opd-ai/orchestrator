@@ -9,19 +9,49 @@ import (
 
 func TestRecordRetryConvergenceTracksRepeatedFailures(t *testing.T) {
 	stats := executionStats{}
-	stats.recordRetryConvergence("R1", 1, "undefined symbol", "undefined symbol")
+	if forced := stats.recordRetryConvergence("R1", 1, "undefined symbol", "undefined symbol"); forced {
+		t.Fatal("retry 1 should not force architect mode")
+	}
 	if stats.convergenceSamples != 0 || stats.convergenceAlerts != 0 {
 		t.Fatalf("unexpected counts before threshold: %#v", stats)
 	}
 
-	stats.recordRetryConvergence("R1", 2, "undefined symbol", "undefined symbol")
+	if forced := stats.recordRetryConvergence("R1", 2, "undefined symbol", "undefined symbol"); !forced {
+		t.Fatal("retry 2 should force architect mode after repeated failure")
+	}
 	if stats.convergenceSamples != 1 || stats.convergenceAlerts != 1 {
 		t.Fatalf("expected one alert, got samples=%d alerts=%d", stats.convergenceSamples, stats.convergenceAlerts)
 	}
 
-	stats.recordRetryConvergence("R1", 3, "undefined symbol", "type mismatch")
+	if forced := stats.recordRetryConvergence("R1", 3, "undefined symbol", "type mismatch"); forced {
+		t.Fatal("changed failure category should not force architect mode")
+	}
 	if stats.convergenceSamples != 2 || stats.convergenceAlerts != 1 {
 		t.Fatalf("expected convergence sample without alert, got samples=%d alerts=%d", stats.convergenceSamples, stats.convergenceAlerts)
+	}
+}
+
+func TestFixRetrySettings(t *testing.T) {
+	prevArchitect, prevExecutor, prevModel, prevEscalation := architectModelName, executorModelName, modelName, activeModelEscalation
+	architectModelName = "architect-large"
+	executorModelName = "executor-small"
+	modelName = "default-model"
+	activeModelEscalation = modelEscalationState{}
+	t.Cleanup(func() {
+		architectModelName = prevArchitect
+		executorModelName = prevExecutor
+		modelName = prevModel
+		activeModelEscalation = prevEscalation
+	})
+
+	temp, model := fixRetrySettings(2, false)
+	if temp != 0.7 || model != "executor-small" {
+		t.Fatalf("normal retry = (%v, %q), want (0.7, %q)", temp, model, "executor-small")
+	}
+
+	temp, model = fixRetrySettings(3, true)
+	if temp != 0.8 || model != "architect-large" {
+		t.Fatalf("forced architect retry = (%v, %q), want (0.8, %q)", temp, model, "architect-large")
 	}
 }
 
