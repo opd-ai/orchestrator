@@ -206,12 +206,18 @@ func TestReplaceTaskRewritesDownstreamDepsToReplacementBoundary(t *testing.T) {
 
 	replaceTask(&tf, "A", replacements)
 
-	if containsDep(tf.Tasks[0].DependsOn, "A") {
-		t.Fatalf("expected original dependency removed, got %v", tf.Tasks[0].DependsOn)
+	if len(tf.Tasks) != 3 {
+		t.Fatalf("expected replacement tasks added, got %d tasks", len(tf.Tasks))
 	}
-	if !containsDep(tf.Tasks[0].DependsOn, "A.2") {
-		t.Fatalf("expected downstream dependency rewritten to final replacement task, got %v", tf.Tasks[0].DependsOn)
+	dependent := taskByID(t, &tf, "B")
+	if containsDep(dependent.DependsOn, "A") {
+		t.Fatalf("expected original dependency removed, got %v", dependent.DependsOn)
 	}
+	if !containsDep(dependent.DependsOn, "A.2") {
+		t.Fatalf("expected downstream dependency rewritten to final replacement task, got %v", dependent.DependsOn)
+	}
+	_ = taskByID(t, &tf, "A.1")
+	_ = taskByID(t, &tf, "A.2")
 }
 
 func TestReplaceTaskParallelBoundariesMustAllComplete(t *testing.T) {
@@ -228,12 +234,13 @@ func TestReplaceTaskParallelBoundariesMustAllComplete(t *testing.T) {
 
 	replaceTask(&tf, "A", replacements)
 
-	if depsSatisfied(&tf, &tf.Tasks[0]) {
-		t.Fatalf("expected dependent task to remain blocked until all replacement tasks complete: %+v", tf.Tasks[0])
+	dependent := taskByID(t, &tf, "B")
+	if depsSatisfied(&tf, dependent) {
+		t.Fatalf("expected dependent task to remain blocked until all replacement tasks complete: %+v", dependent)
 	}
-	tf.Tasks[2].Status = "complete"
-	if !depsSatisfied(&tf, &tf.Tasks[0]) {
-		t.Fatalf("expected dependent task ready after all replacement tasks complete: %+v", tf.Tasks[0])
+	taskByID(t, &tf, "A.2").Status = "complete"
+	if !depsSatisfied(&tf, dependent) {
+		t.Fatalf("expected dependent task ready after all replacement tasks complete: %+v", dependent)
 	}
 }
 
@@ -261,4 +268,15 @@ func containsDep(deps []string, id string) bool {
 		}
 	}
 	return false
+}
+
+func taskByID(t *testing.T, tf *TaskFile, id string) *Task {
+	t.Helper()
+	for i := range tf.Tasks {
+		if tf.Tasks[i].ID == id {
+			return &tf.Tasks[i]
+		}
+	}
+	t.Fatalf("task %q not found", id)
+	return nil
 }

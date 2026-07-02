@@ -189,7 +189,7 @@ func appendDepUnique(deps []string, id string) []string {
 
 func rewriteTaskDeps(deps []string, oldID string, replacementIDs []string) []string {
 	if len(deps) == 0 {
-		return nil
+		return deps
 	}
 	updated := make([]string, 0, len(deps)+len(replacementIDs))
 	replaced := false

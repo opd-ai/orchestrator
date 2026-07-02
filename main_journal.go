@@ -119,30 +119,34 @@ func recoverExecutionJournal() error {
 		logInfo("journal_recovered_reverted", entry.TaskID, "")
 		return clearExecutionJournal()
 	case journalStepBuilt:
-		task, err := taskForRecovery(entry.TaskID)
-		if err != nil {
-			return err
-		}
-		files, err := validateRecoveredBuiltPatch(entry)
-		if err != nil {
-			return err
-		}
-		if err := gitCommitFiles(task, files); err != nil {
-			return err
-		}
-		if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
-			return err
-		}
-		if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
-			return err
-		}
-		logInfo("journal_recovered_committed", entry.TaskID, "")
-		return clearExecutionJournal()
+		return recoverBuiltJournal(entry)
 	case journalStepCommitted:
 		return clearExecutionJournal()
 	default:
 		return fmt.Errorf("unknown journal step %q", entry.Step)
 	}
+}
+
+func recoverBuiltJournal(entry executionJournal) error {
+	task, err := taskForRecovery(entry.TaskID)
+	if err != nil {
+		return err
+	}
+	files, err := validateRecoveredBuiltPatch(entry)
+	if err != nil {
+		return err
+	}
+	if err := gitCommitFiles(task, files); err != nil {
+		return err
+	}
+	if err := updateTaskStatus(entry.TaskID, "complete"); err != nil {
+		return err
+	}
+	if err := recordExecutionJournal(task.ID, journalStepCommitted, ""); err != nil {
+		return err
+	}
+	logInfo("journal_recovered_committed", entry.TaskID, "")
+	return clearExecutionJournal()
 }
 
 func validateRecoveredBuiltPatch(entry executionJournal) ([]string, error) {
@@ -165,7 +169,7 @@ func validateRecoveredBuiltPatch(entry executionJournal) ([]string, error) {
 func reversePatchDryRun(diff string) error {
 	tmpFile, err := os.CreateTemp("", "orchestrator-recovery-*.patch")
 	if err != nil {
-		return err
+		return fmt.Errorf("create temporary recovery patch: %w", err)
 	}
 	tmpName := tmpFile.Name()
 	defer func() {
