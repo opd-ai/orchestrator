@@ -310,14 +310,14 @@ func saveTasks(tf TaskFile) {
 	os.WriteFile(tasksFile, b, 0o644)
 }
 
-func gitCommit(task *Task) {
+func gitCommit(task *Task) error {
 	if err := exec.Command("git", "add", ".").Run(); err != nil {
-		logError("git_add_failed", task.ID, err.Error())
-		return
+		return fmt.Errorf("git add: %w", err)
 	}
 	if err := exec.Command("git", "commit", "-m", "Task "+task.ID+": "+task.Description).Run(); err != nil {
-		logError("git_commit_failed", task.ID, err.Error())
+		return fmt.Errorf("git commit: %w", err)
 	}
+	return nil
 }
 
 func filesTouched(diff string) []string {

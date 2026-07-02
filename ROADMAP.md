@@ -77,12 +77,12 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why first**: Consumer hardware (OOM kills, thermal throttling, user Ctrl+C) makes mid-task interruption near-certain over long sessions. Without recovery, every interruption leaves an applied-but-uncommitted patch on disk and `tasks.json` in an inconsistent state, forcing manual cleanup. This is the highest-friction gap for the stated audience.
 
-- [ ] Create `orchestrator-journal.json` in the working directory, tracking `{ task_id, step: "planned|patched|built|committed", patch_hash }`. Write atomically (write-then-rename) on each step transition.
+- [x] Create `orchestrator-journal.json` in the working directory, tracking `{ task_id, step: "planned|patched|built|committed", patch_hash }`. Write atomically (write-then-rename) on each step transition.
   - Reference: `main_exec.go` — insert journal writes at `applyDiffToWorkspace` success, `build()` success, and `gitCommit` success.
-- [ ] On startup in `runExecutionMode`, read the journal before calling `ensureTasksFile`. If `step == "patched"` and `built == false`, revert the patch (`revertPatch`) and clear the journal entry. If `step == "built"` and `committed == false`, commit the already-applied patch.
+- [x] On startup in `runExecutionMode`, read the journal before calling `ensureTasksFile`. If `step == "patched"` and `built == false`, revert the patch (`revertPatch`) and clear the journal entry. If `step == "built"` and `committed == false`, commit the already-applied patch.
   - Reference: `main_exec.go:revertBuildFailurePatches` already implements the revert primitives; reuse them.
-- [ ] Exclude `orchestrator-journal.json` from git tracking (add to `.gitignore`).
-- [ ] **Validation**: kill the orchestrator mid-patch (`kill -9`), restart; confirm it resumes cleanly and `git status` is clean.
+- [x] Exclude `orchestrator-journal.json` from git tracking (add to `.gitignore`).
+- [x] **Validation**: kill the orchestrator mid-patch (`kill -9`), restart; confirm it resumes cleanly and `git status` is clean.
 
 ---
 

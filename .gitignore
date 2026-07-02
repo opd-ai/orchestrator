@@ -33,3 +33,4 @@ go.work.sum
 /orchestrator
 /tmp
 task_cache.json
+orchestrator-journal.json

@@ -32,6 +32,13 @@ type fileSnapshot struct {
 
 func runExecutionMode() {
 	start := time.Now()
+	if err := recoverExecutionJournal(); err != nil {
+		logError("journal_recovery_failed", "", err.Error())
+	}
+	if !resumeBranch {
+		ensureBranch()
+	}
+	ensureTasksFile()
 
 	// Inject memory into planner
 	memoryContext := memory.SummarizeForPlanner()
@@ -89,12 +96,6 @@ func execute() executionStats {
 	}
 	taskCache := loadTaskCache()
 
-	if !resumeBranch {
-		ensureBranch()
-	}
-
-	ensureTasksFile()
-
 	for {
 		if maxRuntime > 0 && time.Since(start) > maxRuntime {
 			logInfo("max_runtime_reached", "", "")
@@ -128,10 +129,10 @@ func execute() executionStats {
 		stats.tasksTotal++
 		logInfo("task_started", task.ID, task.Description)
 
-		deescalateTier(task.ID)          // de-escalate from previous task (no-op on first)
-		deescalateModel(task.ID)         // revert escalated model from previous task
-		deescalateReviewMode()           // reset strategic review flag
-		maybeEscalateTier(task, &stats)  // check tier escalation triggers for this task
+		deescalateTier(task.ID)         // de-escalate from previous task (no-op on first)
+		deescalateModel(task.ID)        // revert escalated model from previous task
+		deescalateReviewMode()          // reset strategic review flag
+		maybeEscalateTier(task, &stats) // check tier escalation triggers for this task
 		taskRisk := scorePatchRisk("", task)
 		maybeEscalateModel(task, taskRisk, stats.tasksTotal) // check model escalation triggers
 
@@ -176,11 +177,19 @@ func execute() executionStats {
 				saveTasks(tf)
 				continue
 			}
+			if err := recordExecutionJournal(task.ID, journalStepPatched, diff); err != nil {
+				logError("journal_write_failed", task.ID, err.Error())
+			}
 		}
 
 		buildOut := build()
 
 		if buildOut == "" {
+			if !dryRun {
+				if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
+					logError("journal_write_failed", task.ID, err.Error())
+				}
+			}
 			completeTask(task)
 			stats.recordSuccessfulPatch(diff, task)
 			stats.tasksCompleted++
@@ -284,6 +293,11 @@ func attemptBuildFixRetries(
 
 		buildOut = build()
 		if buildOut == "" {
+			if !dryRun {
+				if err := recordExecutionJournal(task.ID, journalStepBuilt, fixDiff); err != nil {
+					logError("journal_write_failed", task.ID, err.Error())
+				}
+			}
 			completeTask(task)
 			stats.recordSuccessfulPatch(fixDiff, task)
 			stats.tasksCompleted++
@@ -351,6 +365,9 @@ func tryTrivialFixes(
 		stats.recordBuildFailure(buildOut)
 		writeBuildFailure(task.ID, buildOut)
 		return buildOut, trivialFixSnapshots
+	}
+	if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
+		logError("journal_write_failed", task.ID, err.Error())
 	}
 
 	completeTask(task)
