@@ -1,34 +1,69 @@
 package memory
 
 import (
+	"errors"
+	"fmt"
+	"os"
 	"os/exec"
 )
 
-// currentBranch returns the current git branch name.
-func currentBranch() (string, error) {
-	out, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+// withMemoryWorktree opens a temporary worktree for MemoryBranch without
+// changing the caller's current branch/worktree.
+func withMemoryWorktree(fn func(path string) error) error {
+	dir, err := os.MkdirTemp("", "orchestrator-memory-worktree-*")
 	if err != nil {
-		return "", err
+		return fmt.Errorf("create temp worktree: %w", err)
 	}
-	return string(bytesTrim(out)), nil
+	defer os.RemoveAll(dir)
+
+	if err := addMemoryWorktree(dir); err != nil {
+		return err
+	}
+
+	fnErr := fn(dir)
+
+	// Return the cleanup error only when fn succeeded; if fn failed, preserve
+	// that error as the primary signal and let os.RemoveAll handle the temp dir.
+	if removeErr := exec.Command("git", "worktree", "remove", "--force", dir).Run(); removeErr != nil && fnErr == nil {
+		return fmt.Errorf("remove memory worktree: %w", removeErr)
+	}
+
+	return fnErr
 }
 
-// checkoutBranch switches the repository to the named git branch.
-func checkoutBranch(name string) error {
-	cmd := exec.Command("git", "checkout", name)
-	return cmd.Run()
-}
-
-// ensureMemoryBranch checks out the memory branch or creates it as an orphan branch.
-func ensureMemoryBranch() error {
-	err := checkoutBranch(MemoryBranch)
-	if err == nil {
+func addMemoryWorktree(dir string) error {
+	if memoryBranchExists() {
+		if err := exec.Command("git", "worktree", "add", dir, MemoryBranch).Run(); err != nil {
+			return fmt.Errorf("add memory worktree: %w", err)
+		}
 		return nil
 	}
+	if err := exec.Command("git", "worktree", "add", "-b", MemoryBranch, dir, "HEAD").Run(); err != nil {
+		return fmt.Errorf("create memory worktree: %w", err)
+	}
+	return nil
+}
 
-	// create if missing
-	cmd := exec.Command("git", "checkout", "--orphan", MemoryBranch)
-	return cmd.Run()
+func memoryBranchExists() bool {
+	err := exec.Command("git", "show-ref", "--verify", "--quiet", "refs/heads/"+MemoryBranch).Run()
+	return err == nil
+}
+
+func commitWorktreeChanges(worktreePath, message string, allowNoChange bool, paths ...string) error {
+	addArgs := []string{"-C", worktreePath, "add", "--"}
+	addArgs = append(addArgs, paths...)
+	if err := exec.Command("git", addArgs...).Run(); err != nil {
+		return fmt.Errorf("git add: %w", err)
+	}
+
+	if err := exec.Command("git", "-C", worktreePath, "commit", "-m", message).Run(); err != nil {
+		var exitErr *exec.ExitError
+		if allowNoChange && errors.As(err, &exitErr) && exitErr.ExitCode() == 1 {
+			return nil
+		}
+		return fmt.Errorf("git commit: %w", err)
+	}
+	return nil
 }
 
 // bytesTrim drops the trailing newline from command output when present.

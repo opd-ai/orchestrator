@@ -381,7 +381,9 @@ func TestGatherAndValidateDiffPersistsRetryCountOnTooLargePatch(t *testing.T) {
 		Files:       []string{"target.go"},
 		Hash:        "task-hash",
 	}
-	saveTasks(TaskFile{Tasks: []Task{task}})
+	if err := saveTasks(TaskFile{Tasks: []Task{task}}); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
 
 	diffLines := []string{
 		"diff --git a/target.go b/target.go",

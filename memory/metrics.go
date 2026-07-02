@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sort"
 )
 
@@ -47,33 +48,39 @@ func SaveMetrics(updated AdaptiveMetrics) error {
 
 // UpdateMetrics merges the latest run summary into persisted adaptive metrics on the memory branch.
 func UpdateMetrics(summary RunSummary) error {
-	originalBranch, err := currentBranch()
-	if err != nil {
-		return err
-	}
-
-	if err := ensureMemoryBranch(); err != nil {
-		return err
-	}
-
-	metrics, _ := LoadMetrics()
-	updatedMetrics := mergeSummaryMetrics(metrics, summary)
-
-	if err := SaveMetrics(updatedMetrics); err != nil {
-		return err
-	}
-
-	if err := exec.Command("git", "add", ".").Run(); err != nil {
-		return err
-	}
-	if err := exec.Command("git", "commit", "-m", "memory: update adaptive metrics").Run(); err != nil {
-		var exitErr *exec.ExitError
-		if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 {
+	return withMemoryWorktree(func(worktreePath string) error {
+		metricsPath := filepath.Join(worktreePath, MetricsFile)
+		metrics, err := loadMetricsFromPath(metricsPath)
+		if err != nil {
 			return err
 		}
-	}
+		updatedMetrics := mergeSummaryMetrics(metrics, summary)
 
-	return checkoutBranch(originalBranch)
+		data, err := json.MarshalIndent(updatedMetrics, "", "  ")
+		if err != nil {
+			return fmt.Errorf("metrics encode: %w", err)
+		}
+		if err := os.WriteFile(metricsPath, data, 0o644); err != nil {
+			return fmt.Errorf("write metrics: %w", err)
+		}
+
+		return commitWorktreeChanges(worktreePath, "memory: update adaptive metrics", true, MetricsFile)
+	})
+}
+
+func loadMetricsFromPath(path string) (AdaptiveMetrics, error) {
+	var m AdaptiveMetrics
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return m, nil
+		}
+		return m, fmt.Errorf("read metrics: %w", err)
+	}
+	if err := json.Unmarshal(data, &m); err != nil {
+		return m, fmt.Errorf("metrics decode: %w", err)
+	}
+	return m, nil
 }
 
 // mergeSummaryMetrics folds one run summary into the running adaptive metrics aggregate.

@@ -62,7 +62,9 @@ func TestRecoverExecutionJournalPatchedRevertsWorkspace(t *testing.T) {
 		t.Fatalf("write file: %v", err)
 	}
 	tf := TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}}
-	saveTasks(tf)
+	if err := saveTasks(tf); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
 
 	diff := strings.Join([]string{
 		"diff --git a/sample.txt b/sample.txt",
@@ -121,7 +123,9 @@ func TestRecoverExecutionJournalBuiltCommitsPatch(t *testing.T) {
 		t.Fatalf("write gitignore: %v", err)
 	}
 	tf := TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}}
-	saveTasks(tf)
+	if err := saveTasks(tf); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
 	runCmd(t, "git", "add", ".")
 	runCmd(t, "git", "commit", "-m", "initial")
 
@@ -188,7 +192,9 @@ func TestRecoverExecutionJournalBuiltSkipsUnrelatedWorkspaceChanges(t *testing.T
 	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte("orchestrator-journal.json\n"), 0o644); err != nil {
 		t.Fatalf("write gitignore: %v", err)
 	}
-	saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}})
+	if err := saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}}); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
 	runCmd(t, "git", "add", ".")
 	runCmd(t, "git", "commit", "-m", "initial")
 
@@ -248,7 +254,9 @@ func TestRecoverExecutionJournalBuiltFailsOnWorkspaceMismatch(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(tmpDir, ".gitignore"), []byte("orchestrator-journal.json\n"), 0o644); err != nil {
 		t.Fatalf("write gitignore: %v", err)
 	}
-	saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}})
+	if err := saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}}); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
 	runCmd(t, "git", "add", ".")
 	runCmd(t, "git", "commit", "-m", "initial")
 

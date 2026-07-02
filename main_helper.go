@@ -43,6 +43,10 @@ var (
 	auditOutput  string
 )
 
+var gitCheckoutNewBranch = func(branch string) error {
+	return exec.Command("git", "checkout", "-b", branch).Run()
+}
+
 const (
 	defaultModel    = "local-27b"
 	defaultEndpoint = "http://localhost:11434/v1/chat/completions"
@@ -122,10 +126,23 @@ func parseFlags() {
 // For brevity below, only modified/critical helpers included.
 ////////////////////////////////////////////////////////////
 
-func ensureBranch() {
+func ensureBranch() error {
 	branch := fmt.Sprintf("autonomous/%d", time.Now().Unix())
-	exec.Command("git", "checkout", "-b", branch).Run()
+	return createBranch(branch)
+}
+
+func createBranch(branch string) error {
+	if err := gitCheckoutNewBranch(branch); err != nil {
+		return fmt.Errorf("create branch %q: %w", branch, err)
+	}
 	logInfo("branch_created", "", branch)
+	return nil
+}
+
+func ensureBranchOrFatal() {
+	if err := ensureBranch(); err != nil {
+		logFatal("branch_create_failed", err.Error())
+	}
 }
 
 func completeTask(task *Task) {

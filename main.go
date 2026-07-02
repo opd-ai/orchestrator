@@ -121,7 +121,7 @@ func ensureTasksFile() {
 
 	allTasks = injectFileOverlapDeps(allTasks)
 	tf := TaskFile{Tasks: allTasks}
-	saveTasks(tf)
+	mustSaveTasks(tf)
 	logInfo("tasks_bootstrap_complete", "", fmt.Sprintf("%d tasks", len(allTasks)))
 }
 
@@ -463,9 +463,25 @@ func loadTasks() TaskFile {
 	return tf
 }
 
-func saveTasks(tf TaskFile) {
-	b, _ := json.MarshalIndent(tf, "", "  ")
-	os.WriteFile(tasksFile, b, 0o644)
+func saveTasks(tf TaskFile) error {
+	return writeTasksFile(tasksFile, tf)
+}
+
+func writeTasksFile(path string, tf TaskFile) error {
+	b, err := json.MarshalIndent(tf, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal tasks: %w", err)
+	}
+	if err := os.WriteFile(path, b, 0o644); err != nil {
+		return fmt.Errorf("write tasks file: %w", err)
+	}
+	return nil
+}
+
+func mustSaveTasks(tf TaskFile) {
+	if err := saveTasks(tf); err != nil {
+		logFatal("tasks_write_failed", err.Error())
+	}
 }
 
 func gitCommit(task *Task) error {
