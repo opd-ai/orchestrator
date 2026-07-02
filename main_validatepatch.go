@@ -116,7 +116,16 @@ func validateTouchedFilePath(file, wd string) error {
 
 	clean := filepath.Clean(file)
 	candidate := filepath.Join(wd, clean)
-	rel, err := filepath.Rel(wd, candidate)
+	resolvedRoot, err := filepath.EvalSymlinks(wd)
+	if err != nil {
+		return fmt.Errorf("resolve repository root symlinks: %w", err)
+	}
+	resolvedCandidate, err := resolvePathForContainment(candidate)
+	if err != nil {
+		return fmt.Errorf("validate path %q: %w", file, err)
+	}
+
+	rel, err := filepath.Rel(resolvedRoot, resolvedCandidate)
 	if err != nil {
 		return fmt.Errorf("validate path %q: %w", file, err)
 	}
@@ -124,6 +133,39 @@ func validateTouchedFilePath(file, wd string) error {
 		return fmt.Errorf("file %q escapes repository root", file)
 	}
 	return nil
+}
+
+func resolvePathForContainment(path string) (string, error) {
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	if !os.IsNotExist(err) {
+		return "", err
+	}
+	return resolvePathFromExistingParent(path)
+}
+
+func resolvePathFromExistingParent(path string) (string, error) {
+	candidate := path
+	for {
+		parent := filepath.Dir(candidate)
+		rel, relErr := filepath.Rel(parent, path)
+		if relErr != nil {
+			return "", relErr
+		}
+		resolvedParent, err := filepath.EvalSymlinks(parent)
+		if err == nil {
+			return filepath.Join(resolvedParent, rel), nil
+		}
+		if !os.IsNotExist(err) {
+			return "", err
+		}
+		if parent == candidate {
+			return "", err
+		}
+		candidate = parent
+	}
 }
 
 func validateDeletionRatio(diff string) error {

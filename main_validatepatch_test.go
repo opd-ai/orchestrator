@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -73,6 +75,20 @@ func TestValidatePatchRejectsPathTraversalWhenTaskFilesAreEmpty(t *testing.T) {
 	err := validatePatch(diff, nil, task)
 	if err == nil || !strings.Contains(err.Error(), "escapes repository root") {
 		t.Fatalf("expected repository-root rejection, got %v", err)
+	}
+}
+
+func TestValidateTouchedFilePathRejectsSymlinkEscape(t *testing.T) {
+	wd := t.TempDir()
+	outside := t.TempDir()
+
+	linkPath := filepath.Join(wd, "link")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if err := validateTouchedFilePath(filepath.Join("link", "evil.txt"), wd); err == nil || !strings.Contains(err.Error(), "escapes repository root") {
+		t.Fatalf("expected symlink escape rejection, got %v", err)
 	}
 }
 
