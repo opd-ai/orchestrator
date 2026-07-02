@@ -56,6 +56,10 @@ Task:
 		subtasks[i].Status = "pending"
 		subtasks[i].DependsOn = task.DependsOn
 	}
+	// Wire sequential deps so subtask[i] cannot start until subtask[i-1] commits.
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
+	}
 
 	replaceTask(tf, task.ID, subtasks)
 }
@@ -117,6 +121,7 @@ func isAlreadySymbolTask(id string) bool {
 }
 
 // splitMultiFileTask turns a multi-file task into one pending subtask per file.
+// Subtasks are wired sequentially so the second cannot start until the first commits.
 func splitMultiFileTask(task *Task) []Task {
 	prefix := task.ID + "."
 	subtasks := make([]Task, 0, len(task.Files))
@@ -129,6 +134,9 @@ func splitMultiFileTask(task *Task) []Task {
 			Status:      "pending",
 		})
 	}
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
+	}
 	return subtasks
 }
 
@@ -139,6 +147,7 @@ func isOversizedTask(description string) bool {
 }
 
 // splitOversizedDescription breaks a long description into smaller pending subtasks.
+// Subtasks are wired sequentially so the second cannot start until the first commits.
 func splitOversizedDescription(task *Task) []Task {
 	parts := regexp.MustCompile(`\s*(?:;|,|\band\b)\s*`).Split(task.Description, -1)
 	prefix := task.ID + "."
@@ -156,7 +165,52 @@ func splitOversizedDescription(task *Task) []Task {
 			Status:      "pending",
 		})
 	}
+	for i := 1; i < len(subtasks); i++ {
+		subtasks[i].DependsOn = appendDepUnique(subtasks[i].DependsOn, subtasks[i-1].ID)
+	}
 	return subtasks
+}
+
+////////////////////////////////////////////////////////////
+// DEPENDENCY HELPERS
+////////////////////////////////////////////////////////////
+
+// appendDepUnique appends id to deps only when it is not already present.
+func appendDepUnique(deps []string, id string) []string {
+	for _, d := range deps {
+		if d == id {
+			return deps
+		}
+	}
+	return append(deps, id)
+}
+
+// injectFileOverlapDeps adds dependency edges between pending tasks that share a
+// common file target. For every pair (A, B) where B appears after A in document
+// order and both list the same file, A's ID is added to B's DependsOn so that B
+// cannot start until A has committed its patch.
+func injectFileOverlapDeps(tasks []Task) []Task {
+	for i := range tasks {
+		for j := i + 1; j < len(tasks); j++ {
+			if !tasksShareFile(tasks[i].Files, tasks[j].Files) {
+				continue
+			}
+			tasks[j].DependsOn = appendDepUnique(tasks[j].DependsOn, tasks[i].ID)
+		}
+	}
+	return tasks
+}
+
+// tasksShareFile reports whether the two file lists have at least one path in common.
+func tasksShareFile(a, b []string) bool {
+	for _, fa := range a {
+		for _, fb := range b {
+			if fa == fb {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 ////////////////////////////////////////////////////////////

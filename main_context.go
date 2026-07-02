@@ -63,25 +63,35 @@ func matchSymbol(desc string, sm *audit.SymbolMap) string {
 // funcScopedContext extracts the source lines of the named function (looked up by key).
 // If multiple boundaries exist, the one whose file is listed in taskFiles is preferred;
 // when no single boundary can be chosen unambiguously the function returns "" so the
-// caller falls back to full-file context.
+// caller falls back to full-file context. Results exceeding maxBytesPerFile are
+// truncated at the byte boundary and marked with "// ... (truncated)".
 func funcScopedContext(key string, sm *audit.SymbolMap, taskFiles []string) string {
 	fbs, ok := sm.Functions[key]
 	if !ok || len(fbs) == 0 {
 		return ""
 	}
 	if len(fbs) == 1 {
-		return extractBoundaryContext(fbs[0])
+		return truncateFuncContext(extractBoundaryContext(fbs[0]))
 	}
 	// Multiple boundaries: prefer one whose file is explicitly in taskFiles.
 	for _, fb := range fbs {
 		for _, tf := range taskFiles {
 			if fb.File == tf {
-				return extractBoundaryContext(fb)
+				return truncateFuncContext(extractBoundaryContext(fb))
 			}
 		}
 	}
 	// Ambiguous and no file hint — fall back to full-file context.
 	return ""
+}
+
+// truncateFuncContext caps a function body context string at maxBytesPerFile bytes.
+// When truncation occurs, a marker comment is appended so the model is aware.
+func truncateFuncContext(ctx string) string {
+	if len(ctx) <= maxBytesPerFile {
+		return ctx
+	}
+	return ctx[:maxBytesPerFile] + "\n// ... (truncated)"
 }
 
 // minSymbolNameLen is the minimum character length a function name must have to be

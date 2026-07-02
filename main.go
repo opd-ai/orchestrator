@@ -38,6 +38,11 @@ import (
 
 var goFileMentionRe = regexp.MustCompile(`\b[\w./-]+\.go\b`)
 
+// maxBytesPerFile caps the number of bytes contributed by a single file to the
+// prompt context. Files exceeding this limit are replaced with their signature-only
+// summary via extractSignatures so the model still sees the callable surface.
+const maxBytesPerFile = 2000
+
 // ensureTasksFile bootstraps tasks from planning documents and audit findings when tasks.json is absent.
 func ensureTasksFile() {
 	if _, err := os.Stat(tasksFile); err == nil {
@@ -103,6 +108,7 @@ func ensureTasksFile() {
 		logFatal("no_documents_found", "No planning documents found")
 	}
 
+	allTasks = injectFileOverlapDeps(allTasks)
 	tf := TaskFile{Tasks: allTasks}
 	saveTasks(tf)
 	logInfo("tasks_bootstrap_complete", "", fmt.Sprintf("%d tasks", len(allTasks)))
@@ -283,10 +289,32 @@ func gatherFileContext(files []string) string {
 			continue
 		}
 		b.WriteString("FILE: " + f + "\n")
-		b.Write(data)
+		if len(data) > maxBytesPerFile {
+			b.Write(extractSignatures(data))
+		} else {
+			b.Write(data)
+		}
 		b.WriteString("\n\n")
 	}
 	return b.String()
+}
+
+// extractSignatures returns only the declaration lines from data: lines beginning
+// with "func ", "type ", "var ", or "const ". Used as a fallback when a file
+// exceeds maxBytesPerFile so the model still sees the callable surface.
+func extractSignatures(data []byte) []byte {
+	lines := bytes.Split(data, []byte("\n"))
+	out := make([][]byte, 0, len(lines)/4)
+	for _, line := range lines {
+		t := bytes.TrimLeft(line, " \t")
+		if bytes.HasPrefix(t, []byte("func ")) ||
+			bytes.HasPrefix(t, []byte("type ")) ||
+			bytes.HasPrefix(t, []byte("var ")) ||
+			bytes.HasPrefix(t, []byte("const ")) {
+			out = append(out, line)
+		}
+	}
+	return bytes.Join(out, []byte("\n"))
 }
 
 ////////////////////////////////////////////////////////////

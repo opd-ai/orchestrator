@@ -148,3 +148,72 @@ func TestTempForRetry(t *testing.T) {
 		}
 	}
 }
+
+func TestSplitMultiFileTaskSequentialDeps(t *testing.T) {
+	task := &Task{
+		ID:          "R5",
+		Description: "Update two files",
+		Files:       []string{"a.go", "b.go", "c.go"},
+		DependsOn:   []string{"R0"},
+		Status:      "pending",
+	}
+	subtasks := splitMultiFileTask(task)
+	if len(subtasks) != 3 {
+		t.Fatalf("expected 3 subtasks, got %d", len(subtasks))
+	}
+	// First subtask inherits parent deps only.
+	if len(subtasks[0].DependsOn) != 1 || subtasks[0].DependsOn[0] != "R0" {
+		t.Errorf("subtask[0].DependsOn = %v, want [R0]", subtasks[0].DependsOn)
+	}
+	// Second subtask must depend on first.
+	if !containsDep(subtasks[1].DependsOn, subtasks[0].ID) {
+		t.Errorf("subtask[1].DependsOn = %v, should include %s", subtasks[1].DependsOn, subtasks[0].ID)
+	}
+	// Third subtask must depend on second.
+	if !containsDep(subtasks[2].DependsOn, subtasks[1].ID) {
+		t.Errorf("subtask[2].DependsOn = %v, should include %s", subtasks[2].DependsOn, subtasks[1].ID)
+	}
+}
+
+func TestSplitOversizedDescriptionSequentialDeps(t *testing.T) {
+	task := &Task{
+		ID:          "R6",
+		Description: "add retry logic and improve error hints and update patch validation",
+		Status:      "pending",
+	}
+	subtasks := splitOversizedDescription(task)
+	if len(subtasks) < 2 {
+		t.Fatalf("expected ≥2 subtasks, got %d", len(subtasks))
+	}
+	for i := 1; i < len(subtasks); i++ {
+		if !containsDep(subtasks[i].DependsOn, subtasks[i-1].ID) {
+			t.Errorf("subtask[%d].DependsOn = %v, should include %s", i, subtasks[i].DependsOn, subtasks[i-1].ID)
+		}
+	}
+}
+
+func TestInjectFileOverlapDeps(t *testing.T) {
+	tasks := []Task{
+		{ID: "A1", Files: []string{"main.go"}, Status: "pending"},
+		{ID: "A2", Files: []string{"other.go"}, Status: "pending"},
+		{ID: "A3", Files: []string{"main.go"}, Status: "pending"},
+	}
+	tasks = injectFileOverlapDeps(tasks)
+	// A3 shares main.go with A1 — must depend on A1.
+	if !containsDep(tasks[2].DependsOn, "A1") {
+		t.Errorf("A3.DependsOn = %v, should include A1", tasks[2].DependsOn)
+	}
+	// A2 shares no file with A1 or A3.
+	if containsDep(tasks[1].DependsOn, "A1") || containsDep(tasks[1].DependsOn, "A3") {
+		t.Errorf("A2.DependsOn = %v, should not include A1 or A3", tasks[1].DependsOn)
+	}
+}
+
+func containsDep(deps []string, id string) bool {
+	for _, d := range deps {
+		if d == id {
+			return true
+		}
+	}
+	return false
+}
