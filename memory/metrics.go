@@ -61,7 +61,7 @@ func UpdateMetrics(summary RunSummary) error {
 			return fmt.Errorf("metrics encode: %w", err)
 		}
 		if err := os.WriteFile(metricsPath, data, 0o644); err != nil {
-			return err
+			return fmt.Errorf("write metrics: %w", err)
 		}
 
 		return commitWorktreeChanges(worktreePath, "memory: update adaptive metrics", true, MetricsFile)
