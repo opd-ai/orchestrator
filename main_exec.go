@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -21,6 +22,12 @@ type executionStats struct {
 	convergenceAlerts  int
 	stability          stabilityMonitor
 	subsystems         map[string]*subsystemMetrics
+}
+
+type fileSnapshot struct {
+	existed bool
+	mode    os.FileMode
+	data    []byte
 }
 
 func runExecutionMode() {
@@ -213,7 +220,7 @@ func resolveBuildFailure(
 	task *Task,
 	context string,
 	contextFiles []string,
-	diff string,
+	originalDiff string,
 	buildOut string,
 	stats *executionStats,
 	taskCache map[string]string,
@@ -221,36 +228,67 @@ func resolveBuildFailure(
 	stats.recordBuildFailure(buildOut)
 	previousFailure := classifyBuildFailure(buildOut)
 	writeBuildFailure(task.ID, buildOut)
-	buildOut = tryTrivialFixes(tf, task, diff, buildOut, stats, taskCache)
+	buildOut, trivialFixSnapshots := tryTrivialFixes(tf, task, originalDiff, buildOut, stats, taskCache)
 	if buildOut == "" {
 		return
 	}
 
+	appliedFixDiffs, resolved := attemptBuildFixRetries(
+		tf, task, context, contextFiles, buildOut, previousFailure, stats, taskCache,
+	)
+	if resolved {
+		return
+	}
+
+	if !dryRun {
+		if err := revertBuildFailurePatches(originalDiff, appliedFixDiffs, trivialFixSnapshots); err != nil {
+			logError("patch_revert_failed", task.ID, err.Error())
+		}
+	}
+	logInfo("task_splitting", task.ID, "max retries exceeded")
+	splitTask(tf, task)
+	saveTasks(*tf)
+}
+
+func attemptBuildFixRetries(
+	tf *TaskFile,
+	task *Task,
+	context string,
+	contextFiles []string,
+	buildOut string,
+	previousFailure string,
+	stats *executionStats,
+	taskCache map[string]string,
+) ([]string, bool) {
+	appliedFixDiffs := make([]string, 0, maxRetries)
 	for task.RetryCount < maxRetries {
 		task.RetryCount++
 		stats.totalRetries++
 		logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-		diff = fixTask(task, context, buildFixHints(buildOut))
-		if err := validatePatch(diff, contextFiles, task); err != nil {
-			writeRejectedPatch(task.ID, diff)
-			break
+		fixDiff := fixTask(task, context, buildFixHints(buildOut))
+		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
+			// Validation happens before append/apply, so a rejected fix diff is not
+			// included in appliedFixDiffs.
+			writeRejectedPatch(task.ID, fixDiff)
+			return appliedFixDiffs, false
 		}
 		if !dryRun {
-			if err := applyPatch(diff); err != nil {
-				break
+			appliedFixDiffs = append(appliedFixDiffs, fixDiff)
+			if err := applyPatch(fixDiff); err != nil {
+				return appliedFixDiffs, false
 			}
 		}
 
 		buildOut = build()
 		if buildOut == "" {
 			completeTask(task)
-			stats.recordSuccessfulPatch(diff, task)
+			stats.recordSuccessfulPatch(fixDiff, task)
 			stats.tasksCompleted++
-			cacheTaskResult(taskCache, task, diff)
+			cacheTaskResult(taskCache, task, fixDiff)
 			saveTaskCache(taskCache)
 			saveTasks(*tf)
-			return
+			return appliedFixDiffs, true
 		}
 		stats.recordBuildFailure(buildOut)
 		currentFailure := classifyBuildFailure(buildOut)
@@ -259,9 +297,28 @@ func resolveBuildFailure(
 		writeBuildFailure(task.ID, buildOut)
 	}
 
-	logInfo("task_splitting", task.ID, "max retries exceeded")
-	splitTask(tf, task)
-	saveTasks(*tf)
+	return appliedFixDiffs, false
+}
+
+func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, trivialFixSnapshots map[string]fileSnapshot) error {
+	var revertErrors []string
+	// Best-effort rollback: keep attempting all reverts so we restore as much state
+	// as possible and report every failure to operators in one error.
+	for i := len(appliedFixDiffs) - 1; i >= 0; i-- {
+		if err := revertPatch(appliedFixDiffs[i]); err != nil {
+			revertErrors = append(revertErrors, fmt.Sprintf("fix patch %d: %v", len(appliedFixDiffs)-i, err))
+		}
+	}
+	if err := restoreFileSnapshots(trivialFixSnapshots); err != nil {
+		revertErrors = append(revertErrors, fmt.Sprintf("trivial fixes: %v", err))
+	}
+	if err := revertPatch(originalDiff); err != nil {
+		revertErrors = append(revertErrors, fmt.Sprintf("original patch: %v", err))
+	}
+	if len(revertErrors) > 0 {
+		return fmt.Errorf("revert failed: %s", strings.Join(revertErrors, "; "))
+	}
+	return nil
 }
 
 func tryTrivialFixes(
@@ -271,10 +328,19 @@ func tryTrivialFixes(
 	buildOut string,
 	stats *executionStats,
 	taskCache map[string]string,
-) string {
+) (string, map[string]fileSnapshot) {
 	touchedFiles := goFilesFromContext(filesTouched(diff))
-	if dryRun || !applyTrivialFixes(touchedFiles, buildOut) {
-		return buildOut
+	if dryRun {
+		return buildOut, nil
+	}
+	trivialFixSnapshots, err := snapshotFiles(touchedFiles)
+	if err != nil {
+		// Best-effort rollback: keep partial snapshots so we can still restore any
+		// files we captured successfully.
+		logError("trivial_fix_snapshot_failed", task.ID, err.Error())
+	}
+	if !applyTrivialFixes(touchedFiles, buildOut) {
+		return buildOut, nil
 	}
 
 	logInfo("trivial_fix_attempted", task.ID, "")
@@ -282,7 +348,7 @@ func tryTrivialFixes(
 	if buildOut != "" {
 		stats.recordBuildFailure(buildOut)
 		writeBuildFailure(task.ID, buildOut)
-		return buildOut
+		return buildOut, trivialFixSnapshots
 	}
 
 	completeTask(task)
@@ -291,7 +357,59 @@ func tryTrivialFixes(
 	cacheTaskResult(taskCache, task, diff)
 	saveTaskCache(taskCache)
 	saveTasks(*tf)
-	return ""
+	return "", nil
+}
+
+func snapshotFiles(paths []string) (map[string]fileSnapshot, error) {
+	snapshots := make(map[string]fileSnapshot, len(paths))
+	var snapshotErrors []string
+	for _, path := range paths {
+		info, err := os.Stat(path)
+		if err != nil {
+			if os.IsNotExist(err) {
+				snapshots[path] = fileSnapshot{}
+				continue
+			}
+			snapshotErrors = append(snapshotErrors, fmt.Sprintf("%s: %v", path, err))
+			continue
+		}
+		data, err := os.ReadFile(path)
+		if err != nil {
+			snapshotErrors = append(snapshotErrors, fmt.Sprintf("%s: %v", path, err))
+			continue
+		}
+		snapshots[path] = fileSnapshot{
+			existed: true,
+			mode:    info.Mode().Perm(),
+			data:    data,
+		}
+	}
+	if len(snapshotErrors) > 0 {
+		return snapshots, fmt.Errorf("snapshot failed: %s", strings.Join(snapshotErrors, "; "))
+	}
+	return snapshots, nil
+}
+
+func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
+	if len(snapshots) == 0 {
+		return nil
+	}
+	var restoreErrors []string
+	for path, snapshot := range snapshots {
+		if !snapshot.existed {
+			if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+				restoreErrors = append(restoreErrors, fmt.Sprintf("%s: %v", path, err))
+			}
+			continue
+		}
+		if err := os.WriteFile(path, snapshot.data, snapshot.mode); err != nil {
+			restoreErrors = append(restoreErrors, fmt.Sprintf("%s: %v", path, err))
+		}
+	}
+	if len(restoreErrors) > 0 {
+		return fmt.Errorf("restore failed: %s", strings.Join(restoreErrors, "; "))
+	}
+	return nil
 }
 
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {

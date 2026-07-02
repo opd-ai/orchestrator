@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -54,6 +56,39 @@ func TestValidatePatchAllowsResolvedContextWithoutExplicitFiles(t *testing.T) {
 
 	if err := validatePatch(diff, []string{"main.go"}, task); err != nil {
 		t.Fatalf("expected context-only file list to pass, got %v", err)
+	}
+}
+
+func TestValidatePatchRejectsPathTraversalWhenTaskFilesAreEmpty(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	task := &Task{Description: "Update planner"}
+	diff := strings.Join([]string{
+		"diff --git a/../../../etc/cron.d/evil b/../../../etc/cron.d/evil",
+		"--- a/../../../etc/cron.d/evil",
+		"+++ b/../../../etc/cron.d/evil",
+		"@@ -0,0 +1 @@",
+		"+* * * * * root /bin/sh -c 'echo pwned'",
+	}, "\n")
+
+	err := validatePatch(diff, nil, task)
+	if err == nil || !strings.Contains(err.Error(), "escapes repository root") {
+		t.Fatalf("expected repository-root rejection, got %v", err)
+	}
+}
+
+func TestValidateTouchedFilePathRejectsSymlinkEscape(t *testing.T) {
+	wd := t.TempDir()
+	outside := t.TempDir()
+
+	linkPath := filepath.Join(wd, "link")
+	if err := os.Symlink(outside, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	if err := validateTouchedFilePath(filepath.Join("link", "evil.txt"), wd); err == nil || !strings.Contains(err.Error(), "escapes repository root") {
+		t.Fatalf("expected symlink escape rejection, got %v", err)
 	}
 }
 
