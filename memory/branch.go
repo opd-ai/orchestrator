@@ -19,9 +19,14 @@ func withMemoryWorktree(fn func(path string) error) error {
 	if err := addMemoryWorktree(dir); err != nil {
 		return err
 	}
-	defer exec.Command("git", "worktree", "remove", "--force", dir).Run()
 
-	return fn(dir)
+	fnErr := fn(dir)
+
+	if removeErr := exec.Command("git", "worktree", "remove", "--force", dir).Run(); removeErr != nil && fnErr == nil {
+		return fmt.Errorf("remove memory worktree: %w", removeErr)
+	}
+
+	return fnErr
 }
 
 func addMemoryWorktree(dir string) error {

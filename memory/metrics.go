@@ -2,6 +2,7 @@ package memory
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -49,7 +50,10 @@ func SaveMetrics(updated AdaptiveMetrics) error {
 func UpdateMetrics(summary RunSummary) error {
 	return withMemoryWorktree(func(worktreePath string) error {
 		metricsPath := filepath.Join(worktreePath, MetricsFile)
-		metrics, _ := loadMetricsFromPath(metricsPath)
+		metrics, err := loadMetricsFromPath(metricsPath)
+		if err != nil {
+			return err
+		}
 		updatedMetrics := mergeSummaryMetrics(metrics, summary)
 
 		data, err := json.MarshalIndent(updatedMetrics, "", "  ")
@@ -68,7 +72,10 @@ func loadMetricsFromPath(path string) (AdaptiveMetrics, error) {
 	var m AdaptiveMetrics
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return m, nil
+		if errors.Is(err, os.ErrNotExist) {
+			return m, nil
+		}
+		return m, fmt.Errorf("read metrics: %w", err)
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return m, fmt.Errorf("metrics decode: %w", err)
