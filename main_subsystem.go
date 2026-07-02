@@ -241,13 +241,15 @@ func recordSubsystemOutcome(metrics map[string]*subsystemMetrics, task *Task, su
 // recordSubsystemPatchMetrics records risk and patch size for a completed patch.
 func recordSubsystemPatchMetrics(task *Task, diff string) {
 	sub := taskSubsystem(task)
+	riskScore := scorePatchRisk(diff, task).score
+	patchSize := lineCount(diff)
 
 	subsystemMu.Lock()
 	ensureSubsystemEntry(subsystemRegistry, sub)
 	m := subsystemRegistry[sub]
 	m.patchCount++
-	m.totalRisk += scorePatchRisk(diff, task).score
-	m.totalSize += lineCount(diff)
+	m.totalRisk += riskScore
+	m.totalSize += patchSize
 	subsystemMu.Unlock()
 }
 

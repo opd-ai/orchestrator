@@ -75,7 +75,7 @@ func changedLineCount(diff string) int {
 	count := 0
 	for _, line := range strings.Split(diff, "\n") {
 		switch {
-		case strings.HasPrefix(line, "+++"), strings.HasPrefix(line, "---"):
+		case strings.HasPrefix(line, "+++ "), strings.HasPrefix(line, "--- "):
 			continue
 		case strings.HasPrefix(line, "+"), strings.HasPrefix(line, "-"):
 			count++

@@ -50,20 +50,25 @@ func ensureTasksFile() {
 
 	var allTasks []Task
 	seen := map[string]bool{}
+	docsFound := false
+	taskGenerationFailures := 0
 
 	for _, doc := range docOrder {
 		if _, err := os.Stat(doc.Name); err != nil {
 			continue
 		}
+		docsFound = true
 
 		data, err := os.ReadFile(doc.Name)
 		if err != nil {
 			logError("doc_read_failed", "", err.Error())
+			taskGenerationFailures++
 			continue
 		}
 		generated, err := generateTasksFromDoc(doc.Name, string(data))
 		if err != nil {
 			logError("planner_failed", "", fmt.Sprintf("doc=%s err=%s", doc.Name, err.Error()))
+			taskGenerationFailures++
 			continue
 		}
 
@@ -82,6 +87,9 @@ func ensureTasksFile() {
 	}
 
 	if len(allTasks) == 0 {
+		if docsFound && taskGenerationFailures > 0 {
+			logFatal("task_generation_failed", "Planning documents found but task generation failed")
+		}
 		logFatal("no_documents_found", "No planning documents found")
 	}
 

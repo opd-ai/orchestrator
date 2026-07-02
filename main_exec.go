@@ -61,7 +61,9 @@ func runExecutionMode() {
 		ModifiedFiles:           copyCounts(stats.modifiedFiles),
 	}
 
-	memory.SaveRun(summary)
+	if err := memory.SaveRun(summary); err != nil {
+		logError("memory_save_failed", "", err.Error())
+	}
 	memory.UpdateMetrics(summary)
 	writeRunSummary(summary)
 }

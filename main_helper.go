@@ -166,7 +166,10 @@ func log(level, event, taskID, msg string) {
 	}
 
 	if logFileHandle != nil {
-		logFileHandle.Write(append(b, '\n'))
+		if _, err := logFileHandle.Write(append(b, '\n')); err != nil {
+			fmt.Fprintf(os.Stderr, "log write failed: %v\n", err)
+			fmt.Fprintf(os.Stderr, "%s\n", b)
+		}
 	} else {
 		fmt.Fprintf(os.Stderr, "%s\n", b)
 	}
