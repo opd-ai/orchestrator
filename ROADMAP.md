@@ -157,10 +157,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why eighth**: `go-stats-generator` reports 45.8 % function-level documentation coverage. The audit pass (`RunAPIPass`) flags undocumented exported symbols as findings. The orchestrator generates findings about its own packages, then discards them (Priority 3 gap). Raising coverage reduces self-generated audit noise and improves the context quality the model receives when editing documented functions.
 
-- [ ] Focus first on exported functions in `audit/` and `memory/` — these are the packages most likely to be used or imported externally. The `audit` package currently has 88 functions with low per-function doc coverage.
+- [x] Focus first on exported functions in `audit/` and `memory/` — these are the packages most likely to be used or imported externally. The `audit` package currently has 88 functions with low per-function doc coverage.
   - Reference: `go-stats-generator` output lists the 22 functions with `has_comment: false` that are exported; prioritise those.
-- [ ] For `main` package internal functions on the execution hot-path (`execute`, `getDiffForTask`, `resolveBuildFailure`, `ensureTasksFile`), add brief one-line doc comments explaining the contract (inputs, outputs, side effects) — not prose, just facts.
-- [ ] **Validation**: `go-stats-generator analyze . --skip-tests` reports overall function documentation coverage ≥ 70 %.
+- [x] For `main` package internal functions on the execution hot-path (`execute`, `getDiffForTask`, `resolveBuildFailure`, `ensureTasksFile`), add brief one-line doc comments explaining the contract (inputs, outputs, side effects) — not prose, just facts.
+- [x] **Validation**: `go-stats-generator analyze . --skip-tests` reports overall function documentation coverage ≥ 70 %.
 
 ---
 
@@ -168,10 +168,10 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: The retry loop (`fixTask` / `attemptBuildFixRetries`) is the hottest consumer of inference cycles. On each retry, `fixTask` receives the task description, current file context, and compiler hints — but **not the diff that produced the last failure**. Without this context, a quantized model will frequently regenerate the same broken patch, producing the oscillation events already tracked by `recordRetryConvergence`. In addition, temperature is hardcoded at 0.6 for every retry regardless of whether the failure looks deterministic or exploratory.
 
-- [ ] Add a `previousDiff string` parameter to `fixTask` in `main_tasks.go`. When non-empty, append a `PREVIOUS_ATTEMPT (failed):` block containing the first 20 lines of the prior diff to the FIX prompt. The 20-line cap prevents this from consuming the context budget.
+- [x] Add a `previousDiff string` parameter to `fixTask` in `main_tasks.go`. When non-empty, append a `PREVIOUS_ATTEMPT (failed):` block containing the first 20 lines of the prior diff to the FIX prompt. The 20-line cap prevents this from consuming the context budget.
   - Reference: `main_exec.go:attemptBuildFixRetries` accumulates `appliedFixDiffs`; pass `appliedFixDiffs[len-1]` as `previousDiff` on each call after the first retry.
-- [ ] Add a `tempForRetry(retryCount int) float64` helper returning `0.3` on retry 1 (conservative restatement), `0.7` on retry 2 (exploratory), `0.5` on retry 3+ (balanced). Replace the hardcoded `0.6` in `fixTask` with this helper.
-- [ ] When `recordRetryConvergence` detects two consecutive identical failure categories, immediately force the next retry to use the architect model (`roleModel(architectModelName)`) and temperature 0.8 rather than continuing with the executor model.
+- [x] Add a `tempForRetry(retryCount int) float64` helper returning `0.3` on retry 1 (conservative restatement), `0.7` on retry 2 (exploratory), `0.5` on retry 3+ (balanced). Replace the hardcoded `0.6` in `fixTask` with this helper.
+- [x] When `recordRetryConvergence` detects two consecutive identical failure categories, immediately force the next retry to use the architect model (`roleModel(architectModelName)`) and temperature 0.8 rather than continuing with the executor model.
   - Reference: `main_exec.go:attemptBuildFixRetries:297` is where the oscillation is detected; route model selection there instead of only logging.
 - [ ] **Validation**: compare `retry_convergence_alerts / retry_convergence_samples` before and after across a sample run. Target: ratio drops below 20 %. Also confirm `go test -race ./...` exits 0 after the change.
 

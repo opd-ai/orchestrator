@@ -10,12 +10,21 @@ import (
 const (
 	oversizedTaskDescriptionLimit = 180
 	oversizedTaskConjunctionLimit = 2
+	previousAttemptLineLimit      = 20
 )
+
+type fixTaskConfig struct {
+	hints        string
+	previousDiff string
+	temperature  float64
+	model        string
+}
 
 ////////////////////////////////////////////////////////////
 // TASK SPLITTING
 ////////////////////////////////////////////////////////////
 
+// splitTask asks the planner model to decompose a blocked task into smaller atomic subtasks.
 func splitTask(tf *TaskFile, task *Task) {
 	prompt := fmt.Sprintf(`
 Split into smaller atomic tasks.
@@ -51,6 +60,7 @@ Task:
 	replaceTask(tf, task.ID, subtasks)
 }
 
+// replaceTask swaps one task ID for a new set of replacement tasks.
 func replaceTask(tf *TaskFile, id string, newTasks []Task) {
 	var updated []Task
 	for _, t := range tf.Tasks {
@@ -62,6 +72,7 @@ func replaceTask(tf *TaskFile, id string, newTasks []Task) {
 	tf.Tasks = updated
 }
 
+// enforceTaskGranularity splits broad tasks before execution when deterministic rules say they are too large.
 func enforceTaskGranularity(tf *TaskFile, task *Task) bool {
 	if len(task.Files) > 1 {
 		replaceTask(tf, task.ID, splitMultiFileTask(task))
@@ -105,6 +116,7 @@ func isAlreadySymbolTask(id string) bool {
 	return symbolTaskRe.MatchString(id)
 }
 
+// splitMultiFileTask turns a multi-file task into one pending subtask per file.
 func splitMultiFileTask(task *Task) []Task {
 	prefix := task.ID + "."
 	subtasks := make([]Task, 0, len(task.Files))
@@ -120,11 +132,13 @@ func splitMultiFileTask(task *Task) []Task {
 	return subtasks
 }
 
+// isOversizedTask reports whether a task description should be decomposed before execution.
 func isOversizedTask(description string) bool {
 	return len(description) > oversizedTaskDescriptionLimit ||
 		strings.Count(description, " and ") >= oversizedTaskConjunctionLimit
 }
 
+// splitOversizedDescription breaks a long description into smaller pending subtasks.
 func splitOversizedDescription(task *Task) []Task {
 	parts := regexp.MustCompile(`\s*(?:;|,|\band\b)\s*`).Split(task.Description, -1)
 	prefix := task.ID + "."
@@ -149,6 +163,7 @@ func splitOversizedDescription(task *Task) []Task {
 // EXECUTION
 ////////////////////////////////////////////////////////////
 
+// executeTask builds the execution prompt and dispatches it through the active execution strategy.
 func executeTask(task *Task, context string) string {
 	prompt := promptWithMemory(buildExecPrompt(task, context))
 	return dispatchExecution(task, context, prompt)
@@ -166,6 +181,7 @@ func dispatchExecution(task *Task, context, prompt string) string {
 	}
 }
 
+// buildExecPrompt assembles the unified-diff prompt for the main execution path.
 func buildExecPrompt(task *Task, context string) string {
 	constraints := []string{
 		"Modify only what is strictly necessary",
@@ -187,7 +203,14 @@ Return unified diff only.
 `, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
 }
 
-func fixTask(task *Task, context, hints string) string {
+// fixTask builds and executes a retry prompt that asks the model to correct a failed patch.
+func fixTask(task *Task, context string, cfg fixTaskConfig) string {
+	prompt := buildFixPrompt(task, context, cfg)
+	return callLLMWithModel(promptWithMemory(prompt), cfg.temperature, cfg.model)
+}
+
+// buildFixPrompt assembles the retry prompt, including a preview of the previous failed diff when available.
+func buildFixPrompt(task *Task, context string, cfg fixTaskConfig) string {
 	constraints := []string{
 		"Return a corrected unified diff",
 		"Keep patch minimal and atomic",
@@ -202,11 +225,14 @@ Task:
 Context:
 %s
 
+%s
+
 Return unified diff only.
-`, executionBlock("FIX", task, constraints, hints), task.Description, context)
-	return callLLMWithModel(promptWithMemory(prompt), 0.6, activeExecutorModel())
+`, executionBlock("FIX", task, constraints, cfg.hints), task.Description, context, previousAttemptBlock(cfg.previousDiff))
+	return prompt
 }
 
+// executionBlock formats the structured execution metadata injected into EXECUTE and FIX prompts.
 func executionBlock(mode string, task *Task, constraints []string, failReason string) string {
 	var b strings.Builder
 	b.WriteString("EXECUTION_BLOCK\n")
@@ -219,6 +245,7 @@ func executionBlock(mode string, task *Task, constraints []string, failReason st
 	return strings.TrimSpace(b.String())
 }
 
+// writeOptionalFields appends optional execution metadata to a prompt block.
 func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, failReason string) {
 	if task.ChangeType != "" {
 		b.WriteString("CHANGE_TYPE: " + string(task.ChangeType) + "\n")
@@ -231,4 +258,40 @@ func writeOptionalFields(b *strings.Builder, task *Task, constraints []string, f
 		b.WriteString("FAIL_REASON:\n")
 		b.WriteString(failReason + "\n")
 	}
+}
+
+// tempForRetry returns the retry temperature profile for the FIX loop.
+func tempForRetry(retryCount int) float64 {
+	switch retryCount {
+	case 1:
+		return 0.3
+	case 2:
+		return 0.7
+	default:
+		return 0.5
+	}
+}
+
+// previousAttemptBlock formats the capped previous diff preview for FIX prompts.
+func previousAttemptBlock(previousDiff string) string {
+	preview := firstDiffLines(previousDiff, previousAttemptLineLimit)
+	if preview == "" {
+		return ""
+	}
+	return "PREVIOUS_ATTEMPT (failed):\n" + preview
+}
+
+// firstDiffLines returns the first limit lines from a diff, or an empty string when no preview is available.
+func firstDiffLines(diff string, limit int) string {
+	if limit <= 0 {
+		return ""
+	}
+	lines := strings.Split(strings.TrimSpace(diff), "\n")
+	if len(lines) == 0 || lines[0] == "" {
+		return ""
+	}
+	if len(lines) > limit {
+		lines = lines[:limit]
+	}
+	return strings.Join(lines, "\n")
 }

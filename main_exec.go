@@ -26,6 +26,8 @@ type executionStats struct {
 	subsystems         map[string]*subsystemMetrics
 }
 
+const architectRetryTemp = 0.8
+
 // loopAction signals how the execute() loop should proceed after an iteration step.
 type loopAction int
 
@@ -50,6 +52,7 @@ type fileSnapshot struct {
 	data    []byte
 }
 
+// runExecutionMode restores state, executes pending tasks, and persists end-of-run memory summaries.
 func runExecutionMode() {
 	start := time.Now()
 	if err := recoverExecutionJournal(); err != nil {
@@ -95,6 +98,7 @@ func runExecutionMode() {
 	writeRunSummary(summary)
 }
 
+// copyCounts returns a shallow copy of a string-to-count map.
 func copyCounts(in map[string]int) map[string]int {
 	if len(in) == 0 {
 		return nil
@@ -308,6 +312,7 @@ func applyDiffToWorkspace(diff string, task *Task) error {
 	return checkPostPatchInvariants(diff, filesTouched(diff), task)
 }
 
+// resolveBuildFailure records a failed build, attempts local fixes, and splits the task if retries are exhausted.
 func resolveBuildFailure(
 	tf *TaskFile,
 	task *Task,
@@ -343,6 +348,7 @@ func resolveBuildFailure(
 	saveTasks(*tf)
 }
 
+// attemptBuildFixRetries iterates FIX prompts until the build passes or the retry budget is spent.
 func attemptBuildFixRetries(
 	tf *TaskFile,
 	task *Task,
@@ -354,12 +360,20 @@ func attemptBuildFixRetries(
 	taskCache map[string]string,
 ) ([]string, bool) {
 	appliedFixDiffs := make([]string, 0, maxRetries)
+	forceArchitectRetry := false
 	for task.RetryCount < maxRetries {
 		task.RetryCount++
 		stats.totalRetries++
 		logInfo("fix_attempt", task.ID, fmt.Sprintf("retry %d", task.RetryCount))
 
-		fixDiff := fixTask(task, context, buildFixHints(buildOut))
+		previousDiff := previousRetryDiff(appliedFixDiffs)
+		temperature, model := fixRetrySettings(task.RetryCount, forceArchitectRetry)
+		fixDiff := fixTask(task, context, fixTaskConfig{
+			hints:        buildFixHints(buildOut),
+			previousDiff: previousDiff,
+			temperature:  temperature,
+			model:        model,
+		})
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
 			// Validation happens before append/apply, so a rejected fix diff is not
 			// included in appliedFixDiffs.
@@ -390,7 +404,7 @@ func attemptBuildFixRetries(
 		}
 		stats.recordBuildFailure(buildOut)
 		currentFailure := classifyBuildFailure(buildOut)
-		stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
+		forceArchitectRetry = stats.recordRetryConvergence(task.ID, task.RetryCount, previousFailure, currentFailure)
 		previousFailure = currentFailure
 		writeBuildFailure(task.ID, buildOut)
 	}
@@ -398,6 +412,7 @@ func attemptBuildFixRetries(
 	return appliedFixDiffs, false
 }
 
+// revertBuildFailurePatches rolls back the original patch, applied fix diffs, and any trivial file edits.
 func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, trivialFixSnapshots map[string]fileSnapshot) error {
 	var revertErrors []string
 	// Best-effort rollback: keep attempting all reverts so we restore as much state
@@ -419,6 +434,7 @@ func revertBuildFailurePatches(originalDiff string, appliedFixDiffs []string, tr
 	return nil
 }
 
+// tryTrivialFixes applies deterministic source edits before falling back to another LLM retry.
 func tryTrivialFixes(
 	tf *TaskFile,
 	task *Task,
@@ -461,6 +477,7 @@ func tryTrivialFixes(
 	return "", nil
 }
 
+// snapshotFiles captures file contents and modes so trivial fixes can be reverted safely.
 func snapshotFiles(paths []string) (map[string]fileSnapshot, error) {
 	snapshots := make(map[string]fileSnapshot, len(paths))
 	var snapshotErrors []string
@@ -491,6 +508,7 @@ func snapshotFiles(paths []string) (map[string]fileSnapshot, error) {
 	return snapshots, nil
 }
 
+// restoreFileSnapshots restores files to the captured snapshot state.
 func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 	if len(snapshots) == 0 {
 		return nil
@@ -513,6 +531,7 @@ func restoreFileSnapshots(snapshots map[string]fileSnapshot) error {
 	return nil
 }
 
+// ensureCleanWorkspace resets tracked and untracked changes before starting a task when resets are enabled.
 func ensureCleanWorkspace(taskID string) error {
 	if dryRun || skipWorkspaceReset {
 		return nil
@@ -542,6 +561,7 @@ func ensureCleanWorkspace(taskID string) error {
 	return nil
 }
 
+// workspaceDirty reports whether tracked or staged changes are present in the repository.
 func workspaceDirty() (bool, error) {
 	dirty, err := commandMarksDirty("git", "diff", "--quiet", "HEAD")
 	if err != nil {
@@ -553,6 +573,7 @@ func workspaceDirty() (bool, error) {
 	return commandMarksDirty("git", "diff", "--cached", "--quiet")
 }
 
+// commandMarksDirty treats exit code 1 as a dirty-state signal for git diff-style commands.
 func commandMarksDirty(name string, args ...string) (bool, error) {
 	cmd := exec.Command(name, args...)
 	if err := cmd.Run(); err != nil {
@@ -565,6 +586,7 @@ func commandMarksDirty(name string, args ...string) (bool, error) {
 	return false, nil
 }
 
+// sanitizeCommandOutput flattens command output for single-line log messages.
 func sanitizeCommandOutput(out []byte) string {
 	clean := strings.TrimSpace(string(out))
 	clean = strings.ReplaceAll(clean, "\n", " | ")
@@ -574,6 +596,7 @@ func sanitizeCommandOutput(out []byte) string {
 	return clean
 }
 
+// recordSuccessfulPatch updates execution metrics after a patch completes successfully.
 func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	patchSize := lineCount(diff)
 	s.largestPatch = max(s.largestPatch, patchSize)
@@ -585,12 +608,14 @@ func (s *executionStats) recordSuccessfulPatch(diff string, task *Task) {
 	s.stability.recordSuccess()
 }
 
+// trackHighRisk increments the high-risk counter when a patch crosses the configured risk threshold.
 func (s *executionStats) trackHighRisk(diff string, task *Task) {
 	if scorePatchRisk(diff, task).level >= RiskHigh {
 		s.highRiskPatches++
 	}
 }
 
+// recordBuildFailure buckets a build error by failure category for run summaries.
 func (s *executionStats) recordBuildFailure(buildOut string) {
 	failure := classifyBuildFailure(buildOut)
 	if failure == "" {
@@ -599,14 +624,36 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 	s.failurePatterns[failure]++
 }
 
-func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) {
+// fixRetrySettings returns the temperature and model to use for the next fix attempt, forcing the architect model when requested.
+func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
+	if forceArchitect {
+		if architectModelName != "" {
+			return architectRetryTemp, architectModelName
+		}
+		return architectRetryTemp, modelName
+	}
+	return tempForRetry(retryCount), activeExecutorModel()
+}
+
+// previousRetryDiff returns the most recently applied fix diff, or an empty string when no prior retry exists.
+func previousRetryDiff(appliedFixDiffs []string) string {
+	if len(appliedFixDiffs) == 0 {
+		return ""
+	}
+	return appliedFixDiffs[len(appliedFixDiffs)-1]
+}
+
+// recordRetryConvergence tracks repeated failure categories across consecutive fix attempts.
+// It returns true only when the next retry should force architect mode, and false
+// for low retry counts, empty failure categories, or category changes between retries.
+func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, previous, current string) bool {
 	if retryCount < 2 || current == "" {
-		return
+		return false
 	}
 
 	s.convergenceSamples++
 	if previous != current {
-		return
+		return false
 	}
 
 	s.convergenceAlerts++
@@ -616,4 +663,5 @@ func (s *executionStats) recordRetryConvergence(taskID string, retryCount int, p
 		taskID,
 		fmt.Sprintf("retry %d repeated failure %q", retryCount, current),
 	)
+	return true
 }
