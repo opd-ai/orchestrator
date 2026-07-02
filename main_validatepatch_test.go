@@ -269,6 +269,104 @@ func TestValidateDSLSchemaAddImportRequiresStringLiteral(t *testing.T) {
 	}
 }
 
+func TestValidateDeletionCapDeleteFunctionAllowsHighDeletion(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	// 7 deletions, 3 additions = 70% deletion ratio — within DELETE_FUNCTION cap.
+	task := &Task{Description: "Remove old func", ChangeType: ChangeTypeDeleteFunction}
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1,8 +1,4 @@",
+		"-line1", "-line2", "-line3", "-line4", "-line5", "-line6", "-line7",
+		"+new1", "+new2", "+new3",
+	}, "\n")
+
+	if err := validatePatch(diff, nil, task); err != nil {
+		t.Fatalf("DELETE_FUNCTION with 70%% deletion should pass, got %v", err)
+	}
+}
+
+func TestValidateDeletionCapDeleteFunctionRejectsAbove70(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	// 8 deletions, 1 addition = 88.9% deletion ratio — exceeds DELETE_FUNCTION 70% cap.
+	task := &Task{Description: "Remove old func", ChangeType: ChangeTypeDeleteFunction}
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1,9 +1,2 @@",
+		"-l1", "-l2", "-l3", "-l4", "-l5", "-l6", "-l7", "-l8",
+		"+n1",
+	}, "\n")
+
+	err := validatePatch(diff, nil, task)
+	if err == nil || !strings.Contains(err.Error(), "70%") {
+		t.Fatalf("expected 70%% deletion rejection for DELETE_FUNCTION, got %v", err)
+	}
+}
+
+func TestValidateDeletionCapInsertFunctionRejectsModestDeletion(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	// 2 deletions, 8 additions = 20% deletion ratio — exceeds INSERT_FUNCTION 10% cap.
+	task := &Task{Description: "Add new func", ChangeType: ChangeTypeInsertFunction}
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1,3 +1,9 @@",
+		"-l1", "-l2",
+		"+func newFoo() {}",
+		"+n1", "+n2", "+n3", "+n4", "+n5", "+n6", "+n7",
+	}, "\n")
+
+	err := validatePatch(diff, nil, task)
+	if err == nil || !strings.Contains(err.Error(), "10%") {
+		t.Fatalf("expected 10%% deletion rejection for INSERT_FUNCTION, got %v", err)
+	}
+}
+
+func TestValidateDeletionCapModifyFunctionAllows50Percent(t *testing.T) {
+	maxPatchLines = 50
+	maxFilesTouched = 3
+
+	// 5 deletions, 5 additions = 50% deletion ratio — at MODIFY_FUNCTION cap.
+	task := &Task{Description: "Rewrite func body", ChangeType: ChangeTypeModifyFunction}
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1,6 +1,6 @@",
+		"-l1", "-l2", "-l3", "-l4", "-l5",
+		"+n1", "+n2", "+n3", "+n4", "+n5",
+	}, "\n")
+
+	if err := validatePatch(diff, nil, task); err != nil {
+		t.Fatalf("MODIFY_FUNCTION with 50%% deletion should pass, got %v", err)
+	}
+}
+
+func TestValidateDSLSchemaDeleteFunctionPasses(t *testing.T) {
+	diff := strings.Join([]string{
+		"diff --git a/main.go b/main.go",
+		"--- a/main.go",
+		"+++ b/main.go",
+		"@@ -1,3 +0,0 @@",
+		"-func oldHelper() {}",
+		"-// removed",
+		"-",
+	}, "\n")
+	if err := validateDSLSchema(diff, ChangeTypeDeleteFunction); err != nil {
+		t.Fatalf("expected no error for DELETE_FUNCTION, got %v", err)
+	}
+}
+
 func TestValidateDSLSchemaGeneralAlwaysPasses(t *testing.T) {
 	diff := strings.Join([]string{
 		"diff --git a/main.go b/main.go",

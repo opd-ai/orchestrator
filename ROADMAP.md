@@ -207,15 +207,15 @@ Source: `go-stats-generator analyze . --skip-tests` (2026-07-02). `execute` is t
 
 **Why**: `validateDeletionRatio` applies a hard 30 % deletion cap to all patches regardless of semantic intent. A `MODIFY_FUNCTION` task that rewrites a function body legitimately deletes 40–60 % of lines while replacing them with cleaner code. The hard cap forces such tasks into a split-and-rewrite pattern requiring 2–3× more inference calls. Conversely, `INSERT_FUNCTION` tasks should be held to a stricter cap (≤10 % deletions) because insertions should rarely need to remove existing code.
 
-- [ ] Change `validateDeletionRatio(diff string)` to `validateDeletionRatio(diff string, task *Task)` in `main_validatepatch.go`. Compute the cap via a new `deletionCapForChangeType(ct ChangeType) float64` helper:
+- [x] Change `validateDeletionRatio(diff string)` to `validateDeletionRatio(diff string, task *Task)` in `main_validatepatch.go`. Compute the cap via a new `deletionCapForChangeType(ct ChangeType) float64` helper:
   - `DELETE_FUNCTION` → `0.70`
   - `MODIFY_FUNCTION`, `MODIFY_STRUCT` → `0.50`
   - `INSERT_FUNCTION`, `ADD_IMPORT` → `0.10`
   - `GENERAL` or unset → `0.30` (current behaviour unchanged)
-- [ ] Add `DELETE_FUNCTION ChangeType = "DELETE_FUNCTION"` to `main_dsl.go` alongside the existing change type constants.
-- [ ] Update the `validatePatch` call to `validateDeletionRatio` to pass the task. Update `validateDSLSchema` to accept `DELETE_FUNCTION` as a valid type.
+- [x] Add `DELETE_FUNCTION ChangeType = "DELETE_FUNCTION"` to `main_dsl.go` alongside the existing change type constants.
+- [x] Update the `validatePatch` call to `validateDeletionRatio` to pass the task. Update `validateDSLSchema` to accept `DELETE_FUNCTION` as a valid type.
   - Reference: `main_validatepatch.go:runValidationSteps` — the deletion-ratio step at position 6 currently passes no task context.
-- [ ] **Validation**: audit the last 20 entries in `logs/rejected_patches/` for the rejection reason `"patch deletes more than 30%"`. Confirm the tiered cap would have accepted the legitimate refactors. Run `go test -race ./...` after the change.
+- [x] **Validation**: audit the last 20 entries in `logs/rejected_patches/` for the rejection reason `"patch deletes more than 30%"`. Confirm the tiered cap would have accepted the legitimate refactors. Run `go test -race ./...` after the change.
 
 ---
 

@@ -12,6 +12,7 @@ type ChangeType string
 const (
 	ChangeTypeInsertFunction ChangeType = "INSERT_FUNCTION"
 	ChangeTypeModifyFunction ChangeType = "MODIFY_FUNCTION"
+	ChangeTypeDeleteFunction ChangeType = "DELETE_FUNCTION"
 	ChangeTypeAddImport      ChangeType = "ADD_IMPORT"
 	ChangeTypeModifyStruct   ChangeType = "MODIFY_STRUCT"
 	ChangeTypeGeneral        ChangeType = "GENERAL"
@@ -27,7 +28,7 @@ func validateDSLSchema(diff string, changeType ChangeType) error {
 	case ChangeTypeAddImport:
 		return requiresDiffPattern(diff, "\"",
 			"ADD_IMPORT requires an import string literal in the diff (+\"...\")")
-	case ChangeTypeModifyFunction, ChangeTypeModifyStruct, ChangeTypeGeneral, "":
+	case ChangeTypeModifyFunction, ChangeTypeModifyStruct, ChangeTypeDeleteFunction, ChangeTypeGeneral, "":
 		return nil
 	default:
 		return nil
