@@ -9,6 +9,7 @@ func RunArchitecturePass(ctx AuditContext) []Finding {
 	findings := architectureHotspotFindings(ctx.Hotspots)
 	findings = append(findings, isolatedPackageFindings(ctx.CallDensity)...)
 	findings = append(findings, deadFunctionFindings(ctx.DeadFunctions)...)
+	findings = append(findings, highCentralityFindings(ctx.FuncDAG)...)
 	return findings
 }
 
@@ -35,6 +36,30 @@ func deadFunctionFindings(names []string) []Finding {
 		Recommendation: "Verify these functions are unused and remove them to reduce codebase size.",
 		Confidence:     0.65,
 	}}
+}
+
+// highCentralityFindings uses the function-level DAG to flag functions with an
+// unusually high number of callers.  Such functions are high-risk modification
+// targets because a change propagates to many callers.
+func highCentralityFindings(dag *FuncDAG) []Finding {
+	const callerThreshold = 4
+	if dag == nil {
+		return nil
+	}
+	var findings []Finding
+	for fn, callers := range dag.Callers {
+		if len(callers) < callerThreshold {
+			continue
+		}
+		findings = append(findings, Finding{
+			Type:           "architecture_high_centrality_function",
+			Severity:       "medium",
+			Description:    fmt.Sprintf("Function %q is called by %d callers — changes carry high propagation risk", fn, len(callers)),
+			Recommendation: "Treat changes to this function with extra care; add tests for each known caller.",
+			Confidence:     0.80,
+		})
+	}
+	return findings
 }
 
 func RunAPIPass(ctx AuditContext) []Finding {

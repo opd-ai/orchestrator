@@ -24,55 +24,65 @@ func BuildDependencyGraph(pkgs map[string]*PackageInfo) *DependencyGraph {
 // It returns one Finding per cycle found.  Only edges between packages present
 // in graph.Packages are considered (stdlib / external imports are skipped).
 func (g *DependencyGraph) DetectCycles() []Finding {
-	visited := make(map[string]bool)
-	onStack := make(map[string]bool)
-	var cycles [][]string
-
-	// Deterministic traversal order.
-	roots := make([]string, 0, len(g.Packages))
-	for path := range g.Packages {
-		roots = append(roots, path)
+	state := &cycleState{
+		graph:   g,
+		visited: make(map[string]bool),
+		onStack: make(map[string]bool),
 	}
-	sort.Strings(roots)
-
-	var dfs func(path string, stack []string)
-	dfs = func(path string, stack []string) {
-		visited[path] = true
-		onStack[path] = true
-		stack = append(stack, path)
-
-		for _, dep := range g.Edges[path] {
-			if _, inRepo := g.Packages[dep]; !inRepo {
-				continue
-			}
-			if onStack[dep] {
-				// Extract cycle from current stack.
-				start := 0
-				for i, p := range stack {
-					if p == dep {
-						start = i
-						break
-					}
-				}
-				cycle := make([]string, len(stack[start:]))
-				copy(cycle, stack[start:])
-				cycles = append(cycles, cycle)
-				continue
-			}
-			if !visited[dep] {
-				dfs(dep, stack)
-			}
-		}
-		onStack[path] = false
-	}
-
+	roots := sortedPackageKeys(g.Packages)
 	for _, root := range roots {
-		if !visited[root] {
-			dfs(root, nil)
+		if !state.visited[root] {
+			state.dfs(root, nil)
 		}
 	}
+	return cycleFindings(state.cycles)
+}
 
-	return cycleFindings(cycles)
+type cycleState struct {
+	graph   *DependencyGraph
+	visited map[string]bool
+	onStack map[string]bool
+	cycles  [][]string
+}
+
+func (s *cycleState) dfs(path string, stack []string) {
+	s.visited[path] = true
+	s.onStack[path] = true
+	stack = append(stack, path)
+
+	for _, dep := range s.graph.Edges[path] {
+		if _, inRepo := s.graph.Packages[dep]; !inRepo {
+			continue
+		}
+		if s.onStack[dep] {
+			s.cycles = append(s.cycles, extractCycle(stack, dep))
+			continue
+		}
+		if !s.visited[dep] {
+			s.dfs(dep, stack)
+		}
+	}
+	s.onStack[path] = false
+}
+
+func extractCycle(stack []string, start string) []string {
+	for i, p := range stack {
+		if p == start {
+			cycle := make([]string, len(stack[i:]))
+			copy(cycle, stack[i:])
+			return cycle
+		}
+	}
+	return nil
+}
+
+func sortedPackageKeys(pkgs map[string]*PackageInfo) []string {
+	keys := make([]string, 0, len(pkgs))
+	for k := range pkgs {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 func cycleFindings(cycles [][]string) []Finding {

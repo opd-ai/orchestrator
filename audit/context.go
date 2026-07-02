@@ -20,6 +20,8 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
 		cluster.TotalLOC,
 	)
 
+	dag, _ := BuildFuncDAG(files)
+
 	return AuditContext{
 		ClusterSummary: summary,
 		Exports:        exports,
@@ -28,6 +30,7 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
 		Hotspots:       DetectHotspots(files),
 		CallDensity:    callDensity,
 		DeadFunctions:  DeadFunctionScan(files),
+		FuncDAG:        dag,
 	}
 }
 

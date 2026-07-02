@@ -15,12 +15,7 @@ import (
 //
 // The import-presence heuristic is retained as a low-cost pre-filter.
 func RunConcurrencyPass(ctx AuditContext) []Finding {
-	if len(ctx.Imports) == 0 {
-		return nil
-	}
-	importFindings := concurrencyFindings(ctx.Imports)
-	astFindings := concurrencyASTFindings(ctx.Files)
-	return append(importFindings, astFindings...)
+	return append(concurrencyFindings(ctx.Imports), concurrencyASTFindings(ctx.Files)...)
 }
 
 func firstConcurrencyImport(imports []string) (string, bool) {
@@ -84,53 +79,55 @@ func goroutineCaptureFindings(fset *token.FileSet, body *ast.BlockStmt, loopVars
 		return nil
 	}
 	var findings []Finding
+	shadowed := make(map[string]bool)
 	for i, stmt := range body.List {
-		goStmt, ok := stmt.(*ast.GoStmt)
-		if !ok {
-			continue
-		}
-		fn, ok := goStmt.Call.Fun.(*ast.FuncLit)
-		if !ok {
-			continue
-		}
-		// Build set of variables shadowed in the loop body before this go stmt.
-		shadowed := shadowedBefore(body.List[:i])
-		for _, name := range loopVars {
-			if shadowed[name] {
-				continue
-			}
-			if closureCapturesIdent(fn.Body, name) {
-				pos := fset.Position(goStmt.Pos())
-				findings = append(findings, Finding{
-					Type:           "concurrency_goroutine_loop_capture",
-					Severity:       "high",
-					Description:    fmt.Sprintf("%s:%d: goroutine closure captures loop variable %q — likely data race", path, pos.Line, name),
-					Recommendation: "Shadow the loop variable before launching the goroutine: `name := name`.",
-					Confidence:     0.85,
-				})
-				break
-			}
+		updateShadowed(shadowed, stmt)
+		f, ok := goCaptureFinding(fset, body.List[:i], stmt, loopVars, shadowed, path)
+		if ok {
+			findings = append(findings, f)
 		}
 	}
 	return findings
 }
 
-// shadowedBefore returns the set of variable names that are re-declared via :=
-// in the given statement list (i.e. appear on the LHS of a short variable declaration).
-func shadowedBefore(stmts []ast.Stmt) map[string]bool {
-	out := make(map[string]bool)
-	for _, stmt := range stmts {
-		assign, ok := stmt.(*ast.AssignStmt)
-		if !ok || assign.Tok.String() != ":=" {
-			continue
-		}
-		for _, lhs := range assign.Lhs {
-			if ident, ok := lhs.(*ast.Ident); ok {
-				out[ident.Name] = true
-			}
+// goCaptureFinding checks whether a single statement is a goroutine that
+// captures an unshadowed loop variable.
+func goCaptureFinding(fset *token.FileSet, before []ast.Stmt, stmt ast.Stmt, loopVars []string, shadowed map[string]bool, path string) (Finding, bool) {
+	goStmt, ok := stmt.(*ast.GoStmt)
+	if !ok {
+		return Finding{}, false
+	}
+	fn, ok := goStmt.Call.Fun.(*ast.FuncLit)
+	if !ok {
+		return Finding{}, false
+	}
+	_ = before
+	for _, name := range loopVars {
+		if !shadowed[name] && closureCapturesIdent(fn.Body, name) {
+			pos := fset.Position(goStmt.Pos())
+			return Finding{
+				Type:           "concurrency_goroutine_loop_capture",
+				Severity:       "high",
+				Description:    fmt.Sprintf("%s:%d: goroutine closure captures loop variable %q — likely data race", path, pos.Line, name),
+				Recommendation: "Shadow the loop variable before launching the goroutine: `name := name`.",
+				Confidence:     0.85,
+			}, true
 		}
 	}
-	return out
+	return Finding{}, false
+}
+
+// updateShadowed marks variables re-declared in stmt as shadowed.
+func updateShadowed(shadowed map[string]bool, stmt ast.Stmt) {
+	assign, ok := stmt.(*ast.AssignStmt)
+	if !ok || assign.Tok.String() != ":=" {
+		return
+	}
+	for _, lhs := range assign.Lhs {
+		if ident, ok := lhs.(*ast.Ident); ok {
+			shadowed[ident.Name] = true
+		}
+	}
 }
 
 func closureCapturesIdent(body *ast.BlockStmt, name string) bool {

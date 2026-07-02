@@ -43,6 +43,7 @@ type AuditContext struct {
 	Hotspots       []Hotspot
 	CallDensity    map[string]int
 	DeadFunctions  []string
+	FuncDAG        *FuncDAG
 }
 
 type Finding struct {

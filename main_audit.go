@@ -28,10 +28,7 @@ func runAuditMode() {
 
 	var allFindings []audit.Finding
 
-	// Graph-level architecture checks (cycles, layering) run once for the whole graph.
-	if auditPass == "architecture" || auditPass == "all" || auditPass == "" {
-		allFindings = append(allFindings, audit.RunArchitectureGraphChecks(graph, nil)...)
-	}
+	allFindings = append(allFindings, graphArchitectureFindings(graph)...)
 
 	for _, cluster := range clusters {
 		allFindings = append(allFindings, auditClusterFindings(cluster, graph)...)
@@ -60,6 +57,15 @@ func auditClusterFindings(cluster audit.Cluster, graph *audit.DependencyGraph) [
 		}
 	}
 	return findings
+}
+
+// graphArchitectureFindings runs graph-level architecture checks (cycle detection,
+// layering) when the architecture or all pass is selected.
+func graphArchitectureFindings(graph *audit.DependencyGraph) []audit.Finding {
+	if auditPass != "architecture" && auditPass != "all" && auditPass != "" {
+		return nil
+	}
+	return audit.RunArchitectureGraphChecks(graph, nil)
 }
 
 func runAuditPasses(ctx audit.AuditContext) []audit.Finding {

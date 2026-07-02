@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 )
@@ -28,6 +29,7 @@ func TestEnforceTaskGranularitySplitsOversizedTask(t *testing.T) {
 	desc := "Update retry logic and tighten patch validation and improve error hint formatting"
 	tf := TaskFile{
 		Tasks: []Task{
+			// Use empty Files so symbol-split path is skipped.
 			{ID: "R2", Description: desc, Status: "pending"},
 		},
 	}
@@ -38,6 +40,52 @@ func TestEnforceTaskGranularitySplitsOversizedTask(t *testing.T) {
 	}
 	if len(tf.Tasks) < 2 {
 		t.Fatalf("expected split subtasks, got %d", len(tf.Tasks))
+	}
+}
+
+func TestEnforceTaskGranularitySymbolSplit(t *testing.T) {
+	// Write a temp Go file with multiple symbols so symbolTasksForFiles returns ≥2 tasks.
+	dir := t.TempDir()
+	goFile := dir + "/sample.go"
+	content := `package sample
+
+func Alpha() {}
+func Beta() {}
+func Gamma() {}
+`
+	if err := os.WriteFile(goFile, []byte(content), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "T1", Description: "refactor sample.go", Files: []string{goFile}, Status: "pending"},
+		},
+	}
+	task := &tf.Tasks[0]
+	split := enforceTaskGranularity(&tf, task)
+	if !split {
+		t.Fatal("expected enforceTaskGranularity to split single-file task with many symbols")
+	}
+	if len(tf.Tasks) < 2 {
+		t.Fatalf("expected ≥2 symbol subtasks, got %d: %+v", len(tf.Tasks), tf.Tasks)
+	}
+	for _, sub := range tf.Tasks {
+		if !strings.Contains(sub.ID, ".s") {
+			t.Errorf("symbol subtask ID should contain .s, got %q", sub.ID)
+		}
+		if len(sub.Files) != 1 {
+			t.Errorf("symbol subtask should target one file, got %v", sub.Files)
+		}
+	}
+}
+
+func TestIsAlreadySymbolTask(t *testing.T) {
+	if !isAlreadySymbolTask("T1.s3") {
+		t.Error("T1.s3 should be recognised as a symbol task")
+	}
+	if isAlreadySymbolTask("T1.1") {
+		t.Error("T1.1 should not be recognised as a symbol task")
 	}
 }
 
