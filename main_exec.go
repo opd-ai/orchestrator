@@ -26,6 +26,8 @@ type executionStats struct {
 	subsystems         map[string]*subsystemMetrics
 }
 
+const architectRetryTemp = 0.8
+
 // loopAction signals how the execute() loop should proceed after an iteration step.
 type loopAction int
 
@@ -621,9 +623,9 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
 	if forceArchitect {
 		if architectModelName != "" {
-			return 0.8, architectModelName
+			return architectRetryTemp, architectModelName
 		}
-		return 0.8, modelName
+		return architectRetryTemp, modelName
 	}
 	return tempForRetry(retryCount), activeExecutorModel()
 }
