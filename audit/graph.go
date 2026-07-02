@@ -88,7 +88,14 @@ func sortedPackageKeys(pkgs map[string]*PackageInfo) []string {
 func cycleFindings(cycles [][]string) []Finding {
 	var findings []Finding
 	for _, cycle := range cycles {
-		path := strings.Join(cycle, " → ")
+		if len(cycle) == 0 {
+			continue
+		}
+		// Append the starting node to close the cycle path visually (e.g. "a → b → c → a").
+		display := make([]string, len(cycle)+1)
+		copy(display, cycle)
+		display[len(cycle)] = cycle[0]
+		path := strings.Join(display, " → ")
 		findings = append(findings, Finding{
 			Type:           "architecture_dependency_cycle",
 			Severity:       "high",
@@ -98,6 +105,69 @@ func cycleFindings(cycles [][]string) []Finding {
 		})
 	}
 	return findings
+}
+
+// DeriveLayersFromGraph assigns each package to a topological layer using
+// Kahn's algorithm.  Packages with no in-repo dependencies form the innermost
+// layer (foundation); packages that depend on them form the next layer, and so
+// on.  The returned slice is ordered from outermost (layers[0], e.g. "main") to
+// innermost (layers[len-1], foundation), matching the convention expected by
+// CheckLayering.  Packages that are part of a dependency cycle are excluded
+// (they will be reported separately by DetectCycles).
+func DeriveLayersFromGraph(g *DependencyGraph) [][]string {
+	// Build an in-repo dependency count and reverse-edge map for Kahn's algorithm.
+	depsCount := make(map[string]int, len(g.Packages))
+	dependents := make(map[string][]string) // dep → packages that import dep
+
+	for pkg := range g.Packages {
+		depsCount[pkg] = 0
+	}
+	for pkg, imports := range g.Edges {
+		if _, ok := g.Packages[pkg]; !ok {
+			continue
+		}
+		for _, dep := range imports {
+			if _, ok := g.Packages[dep]; !ok {
+				continue
+			}
+			depsCount[pkg]++
+			dependents[dep] = append(dependents[dep], pkg)
+		}
+	}
+
+	// Seed the queue with packages that have no in-repo dependencies.
+	var queue []string
+	for pkg := range g.Packages {
+		if depsCount[pkg] == 0 {
+			queue = append(queue, pkg)
+		}
+	}
+	sort.Strings(queue)
+
+	// BFS level-by-level to build layers (innermost first).
+	var layers [][]string
+	visited := make(map[string]bool, len(g.Packages))
+	for len(queue) > 0 {
+		sort.Strings(queue)
+		layers = append(layers, append([]string{}, queue...))
+		var next []string
+		for _, pkg := range queue {
+			visited[pkg] = true
+			for _, dep := range dependents[pkg] {
+				depsCount[dep]--
+				if depsCount[dep] == 0 && !visited[dep] {
+					next = append(next, dep)
+				}
+			}
+		}
+		queue = next
+	}
+
+	// Reverse so that layers[0] is outermost (most dependent, e.g. main/cmd).
+	for i, j := 0, len(layers)-1; i < j; i, j = i+1, j-1 {
+		layers[i], layers[j] = layers[j], layers[i]
+	}
+	return layers
 }
 
 // CheckLayering verifies that packages in lower layers (higher index in layers)

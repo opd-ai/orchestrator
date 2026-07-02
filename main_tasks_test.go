@@ -71,8 +71,8 @@ func Gamma() {}
 		t.Fatalf("expected ≥2 symbol subtasks, got %d: %+v", len(tf.Tasks), tf.Tasks)
 	}
 	for _, sub := range tf.Tasks {
-		if !strings.Contains(sub.ID, ".s") {
-			t.Errorf("symbol subtask ID should contain .s, got %q", sub.ID)
+		if !symbolTaskRe.MatchString(sub.ID) {
+			t.Errorf("symbol subtask ID should match .s<digits>, got %q", sub.ID)
 		}
 		if len(sub.Files) != 1 {
 			t.Errorf("symbol subtask should target one file, got %v", sub.Files)

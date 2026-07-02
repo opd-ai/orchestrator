@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
+func BuildAuditContext(cluster Cluster, graph *DependencyGraph, needsFuncDAG bool) AuditContext {
 	exports, imports, callDensity, files := clusterInputs(cluster, graph)
 
 	summary := fmt.Sprintf(
@@ -20,7 +20,10 @@ func BuildAuditContext(cluster Cluster, graph *DependencyGraph) AuditContext {
 		cluster.TotalLOC,
 	)
 
-	dag, _ := BuildFuncDAG(files)
+	var dag *FuncDAG
+	if needsFuncDAG {
+		dag, _ = BuildFuncDAG(files)
+	}
 
 	return AuditContext{
 		ClusterSummary: summary,
@@ -115,7 +118,7 @@ func collectSymbolInfos(pkgPath string, files []string) []SymbolInfo {
 						})
 					case *ast.ValueSpec:
 						kind := strings.ToLower(d.Tok.String())
-						hasDoc := gdHasDoc || (s.Doc != nil && len(s.Doc.List) > 0)
+						hasDoc := gdHasDoc || (s.Doc != nil && len(s.Doc.List) > 0) || (s.Comment != nil && len(s.Comment.List) > 0)
 						for _, name := range s.Names {
 							if !name.IsExported() {
 								continue

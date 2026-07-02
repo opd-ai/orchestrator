@@ -91,7 +91,8 @@ func goroutineCaptureFindings(fset *token.FileSet, body *ast.BlockStmt, loopVars
 }
 
 // goCaptureFinding checks whether a single statement is a goroutine that
-// captures an unshadowed loop variable.
+// captures an unshadowed loop variable.  It skips variables that are passed
+// as parameters to the func literal — those are bound at call time, not captured.
 func goCaptureFinding(fset *token.FileSet, stmt ast.Stmt, loopVars []string, shadowed map[string]bool, path string) (Finding, bool) {
 	goStmt, ok := stmt.(*ast.GoStmt)
 	if !ok {
@@ -101,8 +102,10 @@ func goCaptureFinding(fset *token.FileSet, stmt ast.Stmt, loopVars []string, sha
 	if !ok {
 		return Finding{}, false
 	}
+	// Collect parameter names of the func literal; they shadow the outer loop variables.
+	params := funcLitParamNames(fn)
 	for _, name := range loopVars {
-		if !shadowed[name] && closureCapturesIdent(fn.Body, name) {
+		if !shadowed[name] && !params[name] && closureCapturesIdent(fn.Body, name) {
 			pos := fset.Position(goStmt.Pos())
 			return Finding{
 				Type:           "concurrency_goroutine_loop_capture",
@@ -114,6 +117,20 @@ func goCaptureFinding(fset *token.FileSet, stmt ast.Stmt, loopVars []string, sha
 		}
 	}
 	return Finding{}, false
+}
+
+// funcLitParamNames returns the set of parameter names declared on a function literal.
+func funcLitParamNames(fn *ast.FuncLit) map[string]bool {
+	params := make(map[string]bool)
+	if fn.Type == nil || fn.Type.Params == nil {
+		return params
+	}
+	for _, field := range fn.Type.Params.List {
+		for _, name := range field.Names {
+			params[name.Name] = true
+		}
+	}
+	return params
 }
 
 // updateShadowed marks variables re-declared in stmt as shadowed.

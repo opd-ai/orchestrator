@@ -45,7 +45,8 @@ func runAuditMode() {
 }
 
 func auditClusterFindings(cluster audit.Cluster, graph *audit.DependencyGraph) []audit.Finding {
-	ctx := audit.BuildAuditContext(cluster, graph)
+	needsDAG := auditPass == "architecture" || auditPass == "all" || auditPass == ""
+	ctx := audit.BuildAuditContext(cluster, graph, needsDAG)
 	if verbose {
 		fmt.Println(audit.FormatContextForLLM(ctx))
 	}
@@ -65,7 +66,8 @@ func graphArchitectureFindings(graph *audit.DependencyGraph) []audit.Finding {
 	if auditPass != "architecture" && auditPass != "all" && auditPass != "" {
 		return nil
 	}
-	return audit.RunArchitectureGraphChecks(graph, nil)
+	layers := audit.DeriveLayersFromGraph(graph)
+	return audit.RunArchitectureGraphChecks(graph, layers)
 }
 
 func runAuditPasses(ctx audit.AuditContext) []audit.Finding {

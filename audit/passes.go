@@ -2,6 +2,7 @@ package audit
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 )
 
@@ -46,8 +47,15 @@ func highCentralityFindings(dag *FuncDAG) []Finding {
 	if dag == nil {
 		return nil
 	}
+	// Collect and sort function names for deterministic output order.
+	fns := make([]string, 0, len(dag.Callers))
+	for fn := range dag.Callers {
+		fns = append(fns, fn)
+	}
+	sort.Strings(fns)
 	var findings []Finding
-	for fn, callers := range dag.Callers {
+	for _, fn := range fns {
+		callers := dag.Callers[fn]
 		if len(callers) < callerThreshold {
 			continue
 		}

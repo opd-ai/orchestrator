@@ -95,10 +95,14 @@ func splitBySymbols(tf *TaskFile, task *Task) bool {
 	return true
 }
 
+// symbolTaskRe matches the ".s<digits>" suffix produced by generateSymbolTask,
+// e.g. "T1.s3" or "R2.s12".
+var symbolTaskRe = regexp.MustCompile(`\.s\d+`)
+
 // isAlreadySymbolTask reports whether a task ID was produced by symbolTasksForFiles,
-// i.e. it contains the ".s" infix used by generateSymbolTask.
+// i.e. it contains the ".s<digits>" suffix used by generateSymbolTask.
 func isAlreadySymbolTask(id string) bool {
-	return strings.Contains(id, ".s")
+	return symbolTaskRe.MatchString(id)
 }
 
 func splitMultiFileTask(task *Task) []Task {
