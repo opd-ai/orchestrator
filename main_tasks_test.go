@@ -192,6 +192,51 @@ func TestSplitOversizedDescriptionSequentialDeps(t *testing.T) {
 	}
 }
 
+func TestReplaceTaskRewritesDownstreamDepsToReplacementBoundary(t *testing.T) {
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "A", Description: "parent", Status: "pending"},
+			{ID: "B", Description: "dependent", Status: "pending", DependsOn: []string{"A"}},
+		},
+	}
+	replacements := []Task{
+		{ID: "A.1", Status: "pending"},
+		{ID: "A.2", Status: "pending", DependsOn: []string{"A.1"}},
+	}
+
+	replaceTask(&tf, "A", replacements)
+
+	if containsDep(tf.Tasks[0].DependsOn, "A") {
+		t.Fatalf("expected original dependency removed, got %v", tf.Tasks[0].DependsOn)
+	}
+	if !containsDep(tf.Tasks[0].DependsOn, "A.2") {
+		t.Fatalf("expected downstream dependency rewritten to final replacement task, got %v", tf.Tasks[0].DependsOn)
+	}
+}
+
+func TestReplaceTaskParallelBoundariesMustAllComplete(t *testing.T) {
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "A", Description: "parent", Status: "pending"},
+			{ID: "B", Description: "dependent", Status: "pending", DependsOn: []string{"A"}},
+		},
+	}
+	replacements := []Task{
+		{ID: "A.1", Status: "complete"},
+		{ID: "A.2", Status: "pending"},
+	}
+
+	replaceTask(&tf, "A", replacements)
+
+	if depsSatisfied(&tf, &tf.Tasks[0]) {
+		t.Fatalf("expected dependent task to remain blocked until all replacement tasks complete: %+v", tf.Tasks[0])
+	}
+	tf.Tasks[2].Status = "complete"
+	if !depsSatisfied(&tf, &tf.Tasks[0]) {
+		t.Fatalf("expected dependent task ready after all replacement tasks complete: %+v", tf.Tasks[0])
+	}
+}
+
 func TestInjectFileOverlapDeps(t *testing.T) {
 	tasks := []Task{
 		{ID: "A1", Files: []string{"main.go"}, Status: "pending"},
