@@ -200,10 +200,10 @@ func extractMentionedGoFiles(text string) []string {
 			continue
 		}
 		match := text[start:end]
-		if !isSafeMentionedGoFile(match) {
+		clean := filepath.Clean(match)
+		if !isSafeMentionedGoFile(clean) {
 			continue
 		}
-		clean := filepath.Clean(match)
 		if seen[clean] {
 			continue
 		}
