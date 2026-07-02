@@ -189,28 +189,31 @@ func appendDepUnique(deps []string, id string) []string {
 // common file target. For every pair (A, B) where B appears after A in document
 // order and both list the same file, A's ID is added to B's DependsOn so that B
 // cannot start until A has committed its patch.
+// Uses a file→ownerIDs index to avoid an O(n²) scan.
 func injectFileOverlapDeps(tasks []Task) []Task {
+	// Build file → ordered list of task IDs that reference it.
+	fileToOwners := make(map[string][]string)
 	for i := range tasks {
-		for j := i + 1; j < len(tasks); j++ {
-			if !tasksShareFile(tasks[i].Files, tasks[j].Files) {
-				continue
+		for _, f := range tasks[i].Files {
+			fileToOwners[f] = append(fileToOwners[f], tasks[i].ID)
+		}
+	}
+	// Build task ID → document-order index for O(1) comparisons.
+	taskPos := make(map[string]int, len(tasks))
+	for i, t := range tasks {
+		taskPos[t.ID] = i
+	}
+	// For each task, add deps from every earlier owner of each shared file.
+	for i := range tasks {
+		for _, f := range tasks[i].Files {
+			for _, ownerID := range fileToOwners[f] {
+				if taskPos[ownerID] < i {
+					tasks[i].DependsOn = appendDepUnique(tasks[i].DependsOn, ownerID)
+				}
 			}
-			tasks[j].DependsOn = appendDepUnique(tasks[j].DependsOn, tasks[i].ID)
 		}
 	}
 	return tasks
-}
-
-// tasksShareFile reports whether the two file lists have at least one path in common.
-func tasksShareFile(a, b []string) bool {
-	for _, fa := range a {
-		for _, fb := range b {
-			if fa == fb {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 ////////////////////////////////////////////////////////////

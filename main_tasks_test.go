@@ -182,8 +182,8 @@ func TestSplitOversizedDescriptionSequentialDeps(t *testing.T) {
 		Status:      "pending",
 	}
 	subtasks := splitOversizedDescription(task)
-	if len(subtasks) < 2 {
-		t.Fatalf("expected ≥2 subtasks, got %d", len(subtasks))
+	if len(subtasks) != 3 {
+		t.Fatalf("expected 3 subtasks, got %d", len(subtasks))
 	}
 	for i := 1; i < len(subtasks); i++ {
 		if !containsDep(subtasks[i].DependsOn, subtasks[i-1].ID) {

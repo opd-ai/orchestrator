@@ -304,7 +304,7 @@ func gatherFileContext(files []string) string {
 // exceeds maxBytesPerFile so the model still sees the callable surface.
 func extractSignatures(data []byte) []byte {
 	lines := bytes.Split(data, []byte("\n"))
-	out := make([][]byte, 0, len(lines)/4)
+	out := make([][]byte, 0, len(lines))
 	for _, line := range lines {
 		t := bytes.TrimLeft(line, " \t")
 		if bytes.HasPrefix(t, []byte("func ")) ||
