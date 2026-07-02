@@ -617,7 +617,7 @@ func (s *executionStats) recordBuildFailure(buildOut string) {
 	s.failurePatterns[failure]++
 }
 
-// fixRetrySettings returns the temperature and model to use for the next fix attempt.
+// fixRetrySettings returns the temperature and model to use for the next fix attempt, forcing the architect model when requested.
 func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
 	if forceArchitect {
 		return 0.8, roleModel(architectModelName)
@@ -625,6 +625,7 @@ func fixRetrySettings(retryCount int, forceArchitect bool) (float64, string) {
 	return tempForRetry(retryCount), activeExecutorModel()
 }
 
+// previousRetryDiff returns the most recently applied fix diff, or an empty string when no prior retry exists.
 func previousRetryDiff(appliedFixDiffs []string) string {
 	if len(appliedFixDiffs) == 0 {
 		return ""

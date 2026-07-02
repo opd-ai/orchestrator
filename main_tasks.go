@@ -196,7 +196,7 @@ Return unified diff only.
 `, executionBlock("EXECUTE", task, constraints, ""), task.Description, context)
 }
 
-// fixTask builds a retry prompt that asks the model to correct a failed patch.
+// fixTask builds and executes a retry prompt that asks the model to correct a failed patch.
 func fixTask(task *Task, context, hints, previousDiff string, temperature float64, model string) string {
 	prompt := buildFixPrompt(task, context, hints, previousDiff)
 	return callLLMWithModel(promptWithMemory(prompt), temperature, model)
