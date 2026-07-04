@@ -1,12 +1,14 @@
 package main
 
 import (
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 )
 
@@ -18,24 +20,33 @@ const (
 )
 
 type executionJournal struct {
-	TaskID    string `json:"task_id"`
-	Step      string `json:"step"`
-	PatchHash string `json:"patch_hash"`
-	PatchDiff string `json:"patch_diff,omitempty"`
+	TaskID          string   `json:"task_id"`
+	Step            string   `json:"step,omitempty"` // legacy
+	LastDurableStep string   `json:"last_durable_step,omitempty"`
+	PatchHash       string   `json:"patch_hash,omitempty"` // legacy
+	PatchSHA256     string   `json:"patch_sha256,omitempty"`
+	TouchedFiles    []string `json:"touched_files,omitempty"`
+	PatchDiff       string   `json:"patch_diff,omitempty"`
 }
 
 func recordExecutionJournal(taskID, step, diff string) error {
-	entry := executionJournal{TaskID: taskID, Step: step}
+	// Keep both fields during transition so newer and older binaries can both
+	// interpret journal entries written by this version.
+	entry := executionJournal{TaskID: taskID, Step: step, LastDurableStep: step}
 	prev, ok, err := loadExecutionJournal()
 	if err != nil {
 		return err
 	}
 	if ok {
 		entry.PatchHash = prev.PatchHash
+		entry.PatchSHA256 = prev.PatchSHA256
+		entry.TouchedFiles = append([]string(nil), prev.TouchedFiles...)
 		entry.PatchDiff = prev.PatchDiff
 	}
 	if diff != "" {
+		entry.PatchSHA256 = hashSHA256Normalized(diff)
 		entry.PatchHash = hashString(diff)
+		entry.TouchedFiles = normalizedTouchedFiles(diff)
 		entry.PatchDiff = diff
 	}
 	return writeExecutionJournal(entry)
@@ -55,7 +66,7 @@ func loadExecutionJournal() (executionJournal, bool, error) {
 		logInfo("journal_corrupt_cleared", "", fmt.Sprintf("invalid JSON treated as interrupted write: %v", err))
 		return entry, false, clearExecutionJournal()
 	}
-	if entry.TaskID == "" || entry.Step == "" {
+	if entry.TaskID == "" || journalStep(entry) == "" {
 		// Incomplete payload — treat as an interrupted write.
 		logInfo("journal_incomplete_cleared", "", "incomplete journal payload treated as interrupted write")
 		return entry, false, clearExecutionJournal()
@@ -113,7 +124,7 @@ func recoverExecutionJournal() error {
 		return err
 	}
 
-	switch entry.Step {
+	switch journalStep(entry) {
 	case journalStepPatched:
 		if entry.PatchDiff != "" {
 			if err := revertPatch(entry.PatchDiff); err != nil {
@@ -130,7 +141,7 @@ func recoverExecutionJournal() error {
 	case journalStepCommitted:
 		return clearExecutionJournal()
 	default:
-		return fmt.Errorf("unknown journal step %q", entry.Step)
+		return fmt.Errorf("unknown journal step %q", journalStep(entry))
 	}
 }
 
@@ -160,10 +171,10 @@ func validateRecoveredBuiltPatch(entry executionJournal) ([]string, error) {
 	if entry.PatchDiff == "" {
 		return nil, errors.New("journal missing patch diff")
 	}
-	if got := hashString(entry.PatchDiff); got != entry.PatchHash {
-		return nil, fmt.Errorf("journal patch hash mismatch: got %s want %s", got, entry.PatchHash)
+	if err := validateJournalPatchDigest(entry); err != nil {
+		return nil, err
 	}
-	files := filesTouched(entry.PatchDiff)
+	files := recoveredTouchedFiles(entry)
 	if len(files) == 0 {
 		return nil, errors.New("journal patch touches no files")
 	}
@@ -198,6 +209,51 @@ func reversePatchDryRun(diff string) error {
 		return fmt.Errorf("workspace validation failed: recovered patch no longer matches workspace: %s", msg)
 	}
 	return nil
+}
+
+func validateJournalPatchDigest(entry executionJournal) error {
+	if want := entry.PatchSHA256; want != "" {
+		got := hashSHA256Normalized(entry.PatchDiff)
+		if got != want {
+			return fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
+		}
+		return nil
+	}
+	if want := entry.PatchHash; want != "" {
+		got := hashString(entry.PatchDiff)
+		if got != want {
+			return fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
+		}
+	}
+	return nil
+}
+
+func recoveredTouchedFiles(entry executionJournal) []string {
+	if len(entry.TouchedFiles) > 0 {
+		return append([]string(nil), entry.TouchedFiles...)
+	}
+	return filesTouched(entry.PatchDiff)
+}
+
+func journalStep(entry executionJournal) string {
+	if entry.LastDurableStep != "" {
+		return entry.LastDurableStep
+	}
+	return entry.Step
+}
+
+func hashSHA256Normalized(s string) string {
+	// Normalize line endings and surrounding whitespace so journal digest
+	// comparisons remain stable across platforms and interrupted-write restarts.
+	normalized := strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
+	digest := sha256.Sum256([]byte(normalized))
+	return fmt.Sprintf("%x", digest)
+}
+
+func normalizedTouchedFiles(diff string) []string {
+	files := filesTouched(diff)
+	sort.Strings(files)
+	return files
 }
 
 func taskForRecovery(taskID string) (*Task, error) {

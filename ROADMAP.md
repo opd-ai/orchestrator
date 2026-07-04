@@ -21,12 +21,12 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Extend the execution journal as JSON written atomically with a write-then-rename flow, persisting the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
-2. Before recovering a `built` state, verify that the current workspace still matches the recorded patch metadata.
-3. Restrict recovery commits to the recorded touched files instead of committing the whole worktree.
-4. Treat invalid JSON or incomplete journal payloads as interrupted writes, abort recovery for that task, and emit a structured log explaining the mismatch.
-5. Fail fast if branch creation or checkout fails in `ensureBranch`, and verify the active branch before execution begins.
-6. Add restart-path tests that cover interrupted `patched` and `built` journal states.
+1. [x] Extend the execution journal as JSON written atomically with a write-then-rename flow, persisting the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
+2. [x] Before recovering a `built` state, verify that the current workspace still matches the recorded patch metadata.
+3. [x] Restrict recovery commits to the recorded touched files instead of committing the whole worktree.
+4. [x] Treat invalid JSON or incomplete journal payloads as interrupted writes, abort recovery for that task, and emit a structured log explaining the mismatch.
+5. [x] Fail fast if branch creation or checkout fails in `ensureBranch`, and verify the active branch before execution begins.
+6. [x] Add restart-path tests that cover interrupted `patched` and `built` journal states.
 
 **Definition of done**
 
@@ -44,12 +44,12 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Rewrite downstream `depends_on` edges whenever a task is replaced by split tasks.
-2. Define a deterministic replacement rule where split tasks form a linear chain, no external task may depend on intermediate subtasks, and downstream tasks that depended on the original task are always rewritten to depend on the final subtask ID.
-3. Expand task priority handling to support `critical`, `high`, `normal`, and `low`.
-4. Add retry-aging so repeatedly failing tasks are deprioritized without becoming permanently unreachable.
-5. Emit the resolved priority and dependency state in task-selection logs.
-6. Add tests that cover split-task replacement, dependency rewrites, and priority ordering.
+1. [x] Rewrite downstream `depends_on` edges whenever a task is replaced by split tasks.
+2. [x] Define a deterministic replacement rule where split tasks form a linear chain, no external task may depend on intermediate subtasks, and downstream tasks that depended on the original task are always rewritten to depend on the final subtask ID.
+3. [x] Expand task priority handling to support `critical`, `high`, `normal`, and `low`.
+4. [x] Add retry-aging so repeatedly failing tasks are deprioritized without becoming permanently unreachable.
+5. [x] Emit the resolved priority and dependency state in task-selection logs.
+6. [x] Add tests that cover split-task replacement, dependency rewrites, and priority ordering.
 
 **Definition of done**
 
@@ -67,10 +67,10 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Replace in-place branch switching for memory writes with isolated ref or worktree operations.
-2. Stage and commit only memory artifacts instead of using broad `git add .` behavior.
-3. Make memory-write failures non-destructive to the main run and surface them as explicit warnings.
-4. Add tests for dirty-worktree persistence and branch restoration guarantees.
+1. [x] Replace in-place branch switching for memory writes with isolated ref or worktree operations.
+2. [x] Stage and commit only memory artifacts instead of using broad `git add .` behavior.
+3. [x] Make memory-write failures non-destructive to the main run and surface them as explicit warnings.
+4. [x] Add tests for dirty-worktree persistence and branch restoration guarantees.
 
 **Definition of done**
 

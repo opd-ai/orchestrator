@@ -44,6 +44,12 @@ func TestRecordExecutionJournalRoundTrip(t *testing.T) {
 	if entry.PatchHash == "" || entry.PatchDiff != diff {
 		t.Fatalf("expected patch hash/diff persisted, got %#v", entry)
 	}
+	if entry.PatchSHA256 == "" || len(entry.PatchSHA256) != 64 {
+		t.Fatalf("expected sha256 patch digest persisted, got %#v", entry)
+	}
+	if len(entry.TouchedFiles) != 1 || entry.TouchedFiles[0] != "sample.txt" {
+		t.Fatalf("expected touched files persisted, got %#v", entry.TouchedFiles)
+	}
 }
 
 func TestRecoverExecutionJournalPatchedRevertsWorkspace(t *testing.T) {
@@ -337,5 +343,68 @@ func TestRecoverExecutionJournalIncompletePayloadClearsAndContinues(t *testing.T
 	}
 	if _, statErr := os.Stat(journalFile); !os.IsNotExist(statErr) {
 		t.Fatalf("expected incomplete journal file to be cleared, stat err=%v", statErr)
+	}
+}
+
+func TestRecoverExecutionJournalBuiltSupportsLegacyPatchHash(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	initGitRepo(t, tmpDir)
+
+	path := filepath.Join(tmpDir, "sample.txt")
+	if err := os.WriteFile(path, []byte("a\n"), 0o644); err != nil {
+		t.Fatalf("write file: %v", err)
+	}
+	if err := saveTasks(TaskFile{Tasks: []Task{{ID: "T1", Description: "change sample", Status: "in_progress"}}}); err != nil {
+		t.Fatalf("saveTasks() error = %v", err)
+	}
+	runCmd(t, "git", "add", ".")
+	runCmd(t, "git", "commit", "-m", "initial")
+
+	diff := strings.Join([]string{
+		"diff --git a/sample.txt b/sample.txt",
+		"--- a/sample.txt",
+		"+++ b/sample.txt",
+		"@@ -1 +1 @@",
+		"-a",
+		"+b",
+	}, "\n") + "\n"
+	if err := applyPatch(diff); err != nil {
+		t.Fatalf("applyPatch: %v", err)
+	}
+	entry := executionJournal{
+		TaskID:    "T1",
+		Step:      journalStepBuilt,
+		PatchHash: hashString(diff),
+		PatchDiff: diff,
+	}
+	if err := writeExecutionJournal(entry); err != nil {
+		t.Fatalf("writeExecutionJournal: %v", err)
+	}
+
+	if err := recoverExecutionJournal(); err != nil {
+		t.Fatalf("recoverExecutionJournal: %v", err)
+	}
+
+	logOut := runCmd(t, "git", "log", "--oneline", "-1")
+	if !strings.Contains(logOut, "Task T1: change sample") {
+		t.Fatalf("expected recovery commit message, got %q", logOut)
+	}
+}
+
+func TestHashSHA256NormalizedPreservesCaseSensitivity(t *testing.T) {
+	upper := "diff --git a/x b/x\n+ABC\n"
+	lower := "diff --git a/x b/x\n+abc\n"
+	if hashSHA256Normalized(upper) == hashSHA256Normalized(lower) {
+		t.Fatal("expected sha256 journal digest to remain case-sensitive")
 	}
 }
