@@ -21,7 +21,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Extend the execution journal as JSON written atomically with a write-then-rename flow, persisting the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
+1. [x] Extend the execution journal as JSON written atomically with a write-then-rename flow, persisting the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
 2. Before recovering a `built` state, verify that the current workspace still matches the recorded patch metadata.
 3. Restrict recovery commits to the recorded touched files instead of committing the whole worktree.
 4. Treat invalid JSON or incomplete journal payloads as interrupted writes, abort recovery for that task, and emit a structured log explaining the mismatch.
