@@ -272,8 +272,9 @@ const periodicMetricsInterval = 5
 // logPeriodicMetrics emits a structured log entry summarising the current
 // execution state when taskCounter is a multiple of periodicMetricsInterval.
 // Operators can monitor long-running sessions without waiting for the end-of-run
-// summary. The interval check is performed internally to keep the call-site in
-// execute() branch-free.
+// summary. The taskCounter==0 guard prevents a spurious log before any task has
+// run (0 % periodicMetricsInterval == 0 would otherwise match). The interval
+// check is performed internally to keep the call-site in execute() branch-free.
 func logPeriodicMetrics(stats *executionStats, taskCounter int) {
 	if taskCounter == 0 || taskCounter%periodicMetricsInterval != 0 {
 		return

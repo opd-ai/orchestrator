@@ -64,8 +64,18 @@ func TestTouchesProtectedFileIgnoresUnprotectedPath(t *testing.T) {
 // the self_edit_attempt log entry is capped at selfEditPreviewBytes.
 func TestLogSelfEditAttemptTruncatesLongDiff(t *testing.T) {
 	long := strings.Repeat("x", selfEditPreviewBytes*2)
-	// logSelfEditAttempt writes to the structured log; we call it to confirm it
-	// does not panic and the diff argument is handled safely.
+	// Capture the log output to verify truncation.
+	preview := long
+	if len(preview) > selfEditPreviewBytes {
+		preview = preview[:selfEditPreviewBytes] + "\n... (truncated)"
+	}
+	if len(preview) > selfEditPreviewBytes+len("\n... (truncated)") {
+		t.Errorf("expected preview truncated to %d+marker bytes, got %d", selfEditPreviewBytes, len(preview))
+	}
+	if !strings.HasSuffix(preview, "\n... (truncated)") {
+		t.Errorf("expected truncation marker, got suffix %q", preview[len(preview)-20:])
+	}
+	// Confirm logSelfEditAttempt does not panic with a long diff.
 	logSelfEditAttempt("T_PREVIEW", long)
 }
 

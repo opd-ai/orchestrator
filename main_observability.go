@@ -98,9 +98,10 @@ func writeArtifact(path, content string) {
 }
 
 // pruneArtifactDir removes the oldest files in dir until at most maxFiles remain.
-// Files are ordered lexically by name; the smallest names (lexical-first, which
+// Files are sorted lexically by name; the first N files in that ordering (which
 // corresponds to chronological order for timestamp-prefixed or task-ID–prefixed
-// names) are removed first. Errors are logged but do not halt execution.
+// names) are removed to bring the directory within the retention limit. Errors
+// are logged but do not halt execution.
 func pruneArtifactDir(dir string, maxFiles int) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
