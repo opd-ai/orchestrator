@@ -143,6 +143,8 @@ func nextExecutableTask(tf *TaskFile) *Task {
 	if selected == nil {
 		return nil
 	}
+	logInfo("task_selected", selected.ID, fmt.Sprintf("priority=%d retry_count=%d deps=%v",
+		taskPriority(selected), selected.RetryCount, selected.DependsOn))
 	selected.Status = "in_progress"
 	return selected
 }
@@ -194,13 +196,56 @@ func nextTaskIDIndex(tasks []Task, prefix string) int {
 	return maxID + 1
 }
 
-func taskPriority(task *Task) int {
-	upperDesc := strings.ToUpper(task.Description)
-	if strings.HasPrefix(upperDesc, "[AUDIT-HIGH]") ||
-		strings.HasPrefix(upperDesc, "[AUDIT-CRITICAL]") {
-		return 0
+// taskRetryAgingThreshold is the RetryCount above which a task is deprioritized
+// by one level to prevent persistently failing tasks from monopolising the
+// execution queue.
+const taskRetryAgingThreshold = 3
+
+// Priority levels — lower integers run first.
+const (
+	taskPriorityCritical = 0
+	taskPriorityHigh     = 1
+	taskPriorityNormal   = 2
+	taskPriorityLow      = 3
+)
+
+// taskPriorityPrefixes maps description prefix strings (upper-cased) to their
+// corresponding priority levels. Entries are checked in order; the first match wins.
+var taskPriorityPrefixes = []struct {
+	prefix string
+	level  int
+}{
+	{"[AUDIT-CRITICAL]", taskPriorityCritical},
+	{"[CRITICAL]", taskPriorityCritical},
+	{"[AUDIT-HIGH]", taskPriorityHigh},
+	{"[HIGH]", taskPriorityHigh},
+	{"[NORMAL]", taskPriorityNormal},
+	{"[LOW]", taskPriorityLow},
+}
+
+// baseTaskPriority returns the priority level derived solely from the task
+// description prefix, without applying retry-aging adjustments.
+func baseTaskPriority(upperDesc string) int {
+	for _, pf := range taskPriorityPrefixes {
+		if strings.HasPrefix(upperDesc, pf.prefix) {
+			return pf.level
+		}
 	}
-	return 1
+	return taskPriorityNormal
+}
+
+// taskPriority returns a numeric priority for the task where a smaller value
+// means higher urgency. It recognises four explicit priority prefixes
+// ([critical], [high], [normal], [low]) as well as the legacy [AUDIT-CRITICAL]
+// and [AUDIT-HIGH] tags emitted by the audit subsystem. Tasks whose RetryCount
+// exceeds taskRetryAgingThreshold are aged down by one level so that
+// persistently failing tasks do not block healthier work.
+func taskPriority(task *Task) int {
+	p := baseTaskPriority(strings.ToUpper(task.Description))
+	if task.RetryCount > taskRetryAgingThreshold && p < taskPriorityLow {
+		return p + 1
+	}
+	return p
 }
 
 func extractMentionedGoFiles(text string) []string {

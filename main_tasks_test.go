@@ -280,3 +280,92 @@ func taskByID(t *testing.T, tf *TaskFile, id string) *Task {
 	t.Fatalf("task %q not found", id)
 	return nil
 }
+
+// TestTaskPriorityFourLevels verifies that all four priority prefixes are mapped
+// to distinct numeric levels and that critical < high < normal < low.
+func TestTaskPriorityFourLevels(t *testing.T) {
+	tests := []struct {
+		desc string
+		want int
+	}{
+		{"[critical] fix crash", taskPriorityCritical},
+		{"[CRITICAL] fix crash", taskPriorityCritical},
+		{"[AUDIT-CRITICAL] race in scheduler", taskPriorityCritical},
+		{"[high] improve retry logic", taskPriorityHigh},
+		{"[HIGH] improve retry logic", taskPriorityHigh},
+		{"[AUDIT-HIGH] missing lock", taskPriorityHigh},
+		{"normal work item", taskPriorityNormal},
+		{"[normal] explicit normal", taskPriorityNormal},
+		{"[low] cleanup comments", taskPriorityLow},
+		{"[LOW] cleanup comments", taskPriorityLow},
+	}
+	for _, tt := range tests {
+		task := &Task{Description: tt.desc}
+		if got := taskPriority(task); got != tt.want {
+			t.Errorf("taskPriority(%q) = %d, want %d", tt.desc, got, tt.want)
+		}
+	}
+	// Ordering invariant: critical runs before high, high before normal, normal before low.
+	if taskPriorityCritical >= taskPriorityHigh {
+		t.Error("critical must be higher priority (lower number) than high")
+	}
+	if taskPriorityHigh >= taskPriorityNormal {
+		t.Error("high must be higher priority (lower number) than normal")
+	}
+	if taskPriorityNormal >= taskPriorityLow {
+		t.Error("normal must be higher priority (lower number) than low")
+	}
+}
+
+// TestTaskPriorityRetryAging confirms that a task exceeding the retry threshold
+// is bumped down by one level, but cannot exceed taskPriorityLow.
+func TestTaskPriorityRetryAging(t *testing.T) {
+	// A normal task (no prefix) below threshold stays at normal.
+	base := &Task{Description: "do something", RetryCount: taskRetryAgingThreshold}
+	if got := taskPriority(base); got != taskPriorityNormal {
+		t.Errorf("at threshold, want normal (%d), got %d", taskPriorityNormal, got)
+	}
+
+	// One retry above threshold: normal should age to low.
+	aged := &Task{Description: "do something", RetryCount: taskRetryAgingThreshold + 1}
+	if got := taskPriority(aged); got != taskPriorityLow {
+		t.Errorf("above threshold, want low (%d), got %d", taskPriorityLow, got)
+	}
+
+	// A [low] task already at the ceiling must not go beyond taskPriorityLow.
+	lowAged := &Task{Description: "[low] already low", RetryCount: taskRetryAgingThreshold + 2}
+	if got := taskPriority(lowAged); got != taskPriorityLow {
+		t.Errorf("low task above threshold should stay at low (%d), got %d", taskPriorityLow, got)
+	}
+}
+
+// TestNextExecutableTaskHonoursPriority confirms that nextExecutableTask selects
+// the highest-priority ready task rather than FIFO order.
+func TestNextExecutableTaskHonoursPriority(t *testing.T) {
+	tf := TaskFile{
+		Tasks: []Task{
+			{ID: "N1", Description: "normal task", Status: "pending"},
+			{ID: "H1", Description: "[high] urgent fix", Status: "pending"},
+			{ID: "C1", Description: "[critical] crash fix", Status: "pending"},
+			{ID: "L1", Description: "[low] cleanup", Status: "pending"},
+		},
+	}
+
+	got := nextExecutableTask(&tf)
+	if got == nil {
+		t.Fatal("expected a task, got nil")
+	}
+	if got.ID != "C1" {
+		t.Errorf("expected critical task C1 to be selected first, got %q", got.ID)
+	}
+
+	// Mark critical complete; high should be next.
+	got.Status = "complete"
+	got2 := nextExecutableTask(&tf)
+	if got2 == nil {
+		t.Fatal("expected a second task")
+	}
+	if got2.ID != "H1" {
+		t.Errorf("expected high task H1 next, got %q", got2.ID)
+	}
+}
