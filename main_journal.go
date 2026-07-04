@@ -45,7 +45,7 @@ func recordExecutionJournal(taskID, step, diff string) error {
 	}
 	if diff != "" {
 		entry.PatchSHA256 = hashSHA256Normalized(diff)
-		entry.PatchHash = entry.PatchSHA256
+		entry.PatchHash = hashString(diff)
 		entry.TouchedFiles = normalizedTouchedFiles(diff)
 		entry.PatchDiff = diff
 	}
