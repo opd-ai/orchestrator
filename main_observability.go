@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/opd-ai/orchestrator/memory"
@@ -62,6 +63,18 @@ func writeRejectedPatch(taskID, diff string) {
 	writeArtifact(path, diff)
 }
 
+func recordRejectedPatch(taskID, diff, reason, event string, asError bool) {
+	writeRejectedPatch(taskID, diff)
+	if reason == "" {
+		return
+	}
+	if asError {
+		logError(event, taskID, reason)
+		return
+	}
+	logInfo(event, taskID, reason)
+}
+
 var artifactNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
 
 func buildFailureArtifactName(taskID string, retry int) string {
@@ -93,6 +106,7 @@ func writeRunSummary(summary memory.RunSummary) {
 - Execution duration: %ds
 - Git branch: %s
 - Retry convergence alerts: %d/%d
+%s
 `,
 		summary.TasksTotal,
 		summary.TasksCompleted,
@@ -101,9 +115,22 @@ func writeRunSummary(summary memory.RunSummary) {
 		summary.Branch,
 		summary.RetryConvergenceAlerts,
 		summary.RetryConvergenceSamples,
+		blockedReasonsSection(summary.BlockedTaskReasons),
 	)
 
 	writeArtifact("AUTONOMOUS_RUN_SUMMARY.md", content)
+}
+
+func blockedReasonsSection(reasons map[string]int) string {
+	if len(reasons) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(reasons))
+	for reason, count := range reasons {
+		lines = append(lines, fmt.Sprintf("- %s: %d", reason, count))
+	}
+	sort.Strings(lines)
+	return "\n## Blocked task reasons\n\n" + strings.Join(lines, "\n")
 }
 
 func writeArtifact(path, content string) {

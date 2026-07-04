@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/opd-ai/orchestrator/memory"
 )
 
 func TestWriteBuildFailurePersistsPerAttemptArtifacts(t *testing.T) {
@@ -69,5 +71,77 @@ func TestBuildFailureArtifactNameSanitizesTaskID(t *testing.T) {
 	}
 	if !strings.HasPrefix(name, "R4_1_bad_task-attempt-1-") {
 		t.Fatalf("unexpected artifact prefix: %q", name)
+	}
+}
+
+func TestWriteRejectedPatchPersistsDistinctArtifacts(t *testing.T) {
+	tempDir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	writeRejectedPatch("R4.2", "diff one")
+	writeRejectedPatch("R4.2", "diff two")
+
+	dir := filepath.Join("logs", "rejected_patches")
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("readdir %s: %v", dir, err)
+	}
+	if len(entries) != 2 {
+		t.Fatalf("expected 2 artifacts, got %d", len(entries))
+	}
+}
+
+func TestWriteRunSummaryIncludesBlockedReasons(t *testing.T) {
+	tempDir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(tempDir); err != nil {
+		t.Fatalf("chdir temp: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatalf("restore cwd: %v", err)
+		}
+	})
+
+	writeRunSummary(memory.RunSummary{
+		TasksTotal:             3,
+		TasksCompleted:         2,
+		TasksBlocked:           1,
+		DurationSeconds:        12,
+		Branch:                 "autonomous/test",
+		RetryConvergenceAlerts: 1,
+		RetryConvergenceSamples: 2,
+		BlockedTaskReasons: map[string]int{
+			"patch_rejected":       1,
+			"workspace_reset_fail": 2,
+		},
+	})
+
+	data, err := os.ReadFile("AUTONOMOUS_RUN_SUMMARY.md")
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	text := string(data)
+	if !strings.Contains(text, "## Blocked task reasons") {
+		t.Fatalf("expected blocked reasons section in summary: %q", text)
+	}
+	for _, want := range []string{"- patch_rejected: 1", "- workspace_reset_fail: 2"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected %q in summary: %q", want, text)
+		}
 	}
 }
