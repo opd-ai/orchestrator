@@ -219,6 +219,7 @@ var taskPriorityPrefixes = []struct {
 	{"[CRITICAL]", taskPriorityCritical},
 	{"[AUDIT-HIGH]", taskPriorityHigh},
 	{"[HIGH]", taskPriorityHigh},
+	{"[NORMAL]", taskPriorityNormal},
 	{"[LOW]", taskPriorityLow},
 }
 
