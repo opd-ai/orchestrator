@@ -45,7 +45,7 @@ All file references below are relative to the repository root.
 **Implementation steps**
 
 1. Rewrite downstream `depends_on` edges whenever a task is replaced by split tasks.
-2. Define a deterministic replacement rule where split tasks form a linear chain and downstream tasks that depended on the original task are rewritten to depend on the final subtask ID.
+2. Define a deterministic replacement rule where split tasks form a linear chain, no external task may depend on intermediate subtasks, and downstream tasks that depended on the original task are always rewritten to depend on the final subtask ID.
 3. Expand task priority handling to support `critical`, `high`, `normal`, and `low`.
 4. Add retry-aging so repeatedly failing tasks are deprioritized without becoming permanently unreachable.
 5. Emit the resolved priority and dependency state in task-selection logs.
@@ -110,7 +110,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Score candidate context files deterministically with weighted signals: keyword matches first, exact file-path matches from successful-edit history on the `memories` ref second, and git-tracked recency as the final tiebreaker.
+1. Score candidate context files deterministically with explicit weights: keyword matches = 5, exact file-path matches from successful-edit history on the `memories` ref = 3, and git-tracked recency bucket = 1, with higher total score winning and lexical path order breaking ties.
 2. Enforce a per-file context cap before concatenating raw file contents.
 3. Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
 4. Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
