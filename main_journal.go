@@ -30,6 +30,8 @@ type executionJournal struct {
 }
 
 func recordExecutionJournal(taskID, step, diff string) error {
+	// Keep both fields during transition so newer and older binaries can both
+	// interpret journal entries written by this version.
 	entry := executionJournal{TaskID: taskID, Step: step, LastDurableStep: step}
 	prev, ok, err := loadExecutionJournal()
 	if err != nil {
@@ -241,7 +243,8 @@ func journalStep(entry executionJournal) string {
 }
 
 func hashSHA256Normalized(s string) string {
-	digest := sha256.Sum256([]byte(strings.ToLower(strings.TrimSpace(s))))
+	normalized := strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
+	digest := sha256.Sum256([]byte(normalized))
 	return fmt.Sprintf("%x", digest)
 }
 

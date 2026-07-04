@@ -351,6 +351,7 @@ func TestRecoverExecutionJournalBuiltSupportsLegacyPatchHash(t *testing.T) {
 	if err != nil {
 		t.Fatalf("getwd: %v", err)
 	}
+
 	tmpDir := t.TempDir()
 	if err := os.Chdir(tmpDir); err != nil {
 		t.Fatalf("chdir: %v", err)
@@ -397,5 +398,13 @@ func TestRecoverExecutionJournalBuiltSupportsLegacyPatchHash(t *testing.T) {
 	logOut := runCmd(t, "git", "log", "--oneline", "-1")
 	if !strings.Contains(logOut, "Task T1: change sample") {
 		t.Fatalf("expected recovery commit message, got %q", logOut)
+	}
+}
+
+func TestHashSHA256NormalizedPreservesCaseSensitivity(t *testing.T) {
+	upper := "diff --git a/x b/x\n+ABC\n"
+	lower := "diff --git a/x b/x\n+abc\n"
+	if hashSHA256Normalized(upper) == hashSHA256Normalized(lower) {
+		t.Fatal("expected sha256 journal digest to remain case-sensitive")
 	}
 }
