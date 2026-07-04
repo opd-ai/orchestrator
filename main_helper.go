@@ -135,7 +135,34 @@ func createBranch(branch string) error {
 	if err := gitCheckoutNewBranch(branch); err != nil {
 		return fmt.Errorf("create branch %q: %w", branch, err)
 	}
+	if err := verifyActiveBranch(branch); err != nil {
+		return fmt.Errorf("branch verification after checkout: %w", err)
+	}
 	logInfo("branch_created", "", branch)
+	return nil
+}
+
+// verifyActiveBranch confirms that the current git HEAD is on the named branch.
+// It returns an error when the active branch cannot be determined or does not
+// match the expected name, guarding against silent checkout failures.
+func verifyActiveBranch(expected string) error {
+	got := currentGitBranch()
+	if got != expected {
+		return fmt.Errorf("expected active branch %q, got %q", expected, got)
+	}
+	return nil
+}
+
+// verifyNotDefaultBranch returns an error when the active branch is a well-known
+// default branch name (main, master) or indicates a detached HEAD state.
+// It is called before the execution loop when --resume is set, ensuring that
+// operators do not accidentally execute on the default branch.
+func verifyNotDefaultBranch() error {
+	branch := currentGitBranch()
+	switch branch {
+	case "main", "master", "HEAD", "unknown":
+		return fmt.Errorf("execution requires an isolated branch, but active branch is %q", branch)
+	}
 	return nil
 }
 
@@ -143,6 +170,18 @@ func ensureBranchOrFatal() {
 	if err := ensureBranch(); err != nil {
 		logFatal("branch_create_failed", err.Error())
 	}
+}
+
+// setupExecutionBranch creates a new isolated branch or, when --resume is set,
+// verifies the current branch is not a well-known default before execution begins.
+func setupExecutionBranch() {
+	if resumeBranch {
+		if err := verifyNotDefaultBranch(); err != nil {
+			logFatal("resume_on_default_branch", err.Error())
+		}
+		return
+	}
+	ensureBranchOrFatal()
 }
 
 func completeTask(task *Task) {

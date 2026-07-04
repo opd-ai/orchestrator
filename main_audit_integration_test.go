@@ -46,8 +46,15 @@ func TestMergeAuditFindingsInjectsHighAndCritical(t *testing.T) {
 	if merged[1].ID != "A1" || merged[2].ID != "A2" {
 		t.Fatalf("unexpected injected IDs: %+v", merged)
 	}
-	if taskPriority(&merged[1]) != 0 || taskPriority(&merged[2]) != 0 {
-		t.Fatalf("expected audit tasks to be highest priority: %+v", merged)
+	if taskPriority(&merged[1]) != taskPriorityHigh || taskPriority(&merged[2]) != taskPriorityCritical {
+		t.Fatalf("expected AUDIT-HIGH→%d and AUDIT-CRITICAL→%d, got %d and %d",
+			taskPriorityHigh, taskPriorityCritical,
+			taskPriority(&merged[1]), taskPriority(&merged[2]))
+	}
+	// Both audit tasks must outrank the normal task (lower number = higher urgency).
+	if taskPriority(&merged[1]) >= taskPriority(&merged[0]) {
+		t.Fatalf("expected AUDIT-HIGH to outrank normal task, priorities %d vs %d",
+			taskPriority(&merged[1]), taskPriority(&merged[0]))
 	}
 }
 

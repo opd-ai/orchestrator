@@ -64,9 +64,7 @@ func runExecutionMode() {
 	if err := recoverExecutionJournal(); err != nil {
 		logError("journal_recovery_failed", "", err.Error())
 	}
-	if !resumeBranch {
-		ensureBranchOrFatal()
-	}
+	setupExecutionBranch()
 	ensureTasksFile()
 
 	// Inject memory into planner
