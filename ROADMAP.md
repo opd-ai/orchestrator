@@ -21,10 +21,10 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Extend the execution journal to persist the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
+1. Extend the execution journal as JSON written atomically with a write-then-rename flow, persisting the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
 2. Before recovering a `built` state, verify that the current workspace still matches the recorded patch metadata.
 3. Restrict recovery commits to the recorded touched files instead of committing the whole worktree.
-4. Abort recovery when journal metadata and workspace state diverge, and emit a structured log explaining the mismatch.
+4. Treat invalid JSON or incomplete journal payloads as interrupted writes, abort recovery for that task, and emit a structured log explaining the mismatch.
 5. Fail fast if branch creation or checkout fails in `ensureBranch`, and verify the active branch before execution begins.
 6. Add restart-path tests that cover interrupted `patched` and `built` journal states.
 
@@ -45,7 +45,7 @@ All file references below are relative to the repository root.
 **Implementation steps**
 
 1. Rewrite downstream `depends_on` edges whenever a task is replaced by split tasks.
-2. Define a deterministic replacement rule so downstream tasks depend on the correct successor task IDs.
+2. Define a deterministic replacement rule where split tasks form a linear chain and downstream tasks that depended on the original task are rewritten to depend on the final subtask ID.
 3. Expand task priority handling to support `critical`, `high`, `normal`, and `low`.
 4. Add retry-aging so repeatedly failing tasks are deprioritized without becoming permanently unreachable.
 5. Emit the resolved priority and dependency state in task-selection logs.
@@ -110,7 +110,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Score candidate context files using task keywords, git-tracked file recency, and exact file-path matches against successful-edit history persisted by the adaptive memory system on the `memories` ref.
+1. Score candidate context files deterministically with weighted signals: keyword matches first, exact file-path matches from successful-edit history on the `memories` ref second, and git-tracked recency as the final tiebreaker.
 2. Enforce a per-file context cap before concatenating raw file contents.
 3. Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
 4. Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
@@ -132,7 +132,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Define a protected set of core runtime files that require stronger validation during self-evolution.
+1. Define a protected set of core runtime files by explicit path list for the execution loop, task scheduler, branch/journal recovery, and memory persistence code, and keep that manifest under test.
 2. Require diff preview logging, clean rollback behavior, and passing build/test validation before committing self-edits.
 3. Add a two-step apply path for protected files so candidate changes are validated before replacing the active implementation.
 4. Record self-edit attempts and outcomes in structured logs and run summaries.
