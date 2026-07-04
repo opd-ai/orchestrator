@@ -169,19 +169,10 @@ func validateRecoveredBuiltPatch(entry executionJournal) ([]string, error) {
 	if entry.PatchDiff == "" {
 		return nil, errors.New("journal missing patch diff")
 	}
-	if want := entry.PatchSHA256; want != "" {
-		if got := hashSHA256Normalized(entry.PatchDiff); got != want {
-			return nil, fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
-		}
-	} else if want := entry.PatchHash; want != "" {
-		if got := hashString(entry.PatchDiff); got != want {
-			return nil, fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
-		}
+	if err := validateJournalPatchDigest(entry); err != nil {
+		return nil, err
 	}
-	files := append([]string(nil), entry.TouchedFiles...)
-	if len(files) == 0 {
-		files = filesTouched(entry.PatchDiff)
-	}
+	files := recoveredTouchedFiles(entry)
 	if len(files) == 0 {
 		return nil, errors.New("journal patch touches no files")
 	}
@@ -216,6 +207,30 @@ func reversePatchDryRun(diff string) error {
 		return fmt.Errorf("workspace validation failed: recovered patch no longer matches workspace: %s", msg)
 	}
 	return nil
+}
+
+func validateJournalPatchDigest(entry executionJournal) error {
+	if want := entry.PatchSHA256; want != "" {
+		got := hashSHA256Normalized(entry.PatchDiff)
+		if got != want {
+			return fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
+		}
+		return nil
+	}
+	if want := entry.PatchHash; want != "" {
+		got := hashString(entry.PatchDiff)
+		if got != want {
+			return fmt.Errorf("journal patch hash mismatch: got %s want %s", got, want)
+		}
+	}
+	return nil
+}
+
+func recoveredTouchedFiles(entry executionJournal) []string {
+	if len(entry.TouchedFiles) > 0 {
+		return append([]string(nil), entry.TouchedFiles...)
+	}
+	return filesTouched(entry.PatchDiff)
 }
 
 func journalStep(entry executionJournal) string {
