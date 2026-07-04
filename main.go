@@ -310,22 +310,12 @@ func resolveContextFiles(task *Task) []string {
 	if len(task.Files) > 0 {
 		return task.Files
 	}
-
-	out, _ := exec.Command("git", "ls-files").Output()
-	files := strings.Split(string(out), "\n")
-
-	var matched []string
-	for _, f := range files {
-		if strings.HasSuffix(f, ".go") &&
-			strings.Contains(strings.ToLower(f), keyword(task.Description)) {
-			matched = append(matched, f)
-		}
-		if len(matched) >= maxContextFiles {
-			break
-		}
-	}
-
-	return matched
+	return scoreContextFiles(
+		allGoFiles(),
+		keyword(task.Description),
+		loadEditHistorySet(),
+		loadRecentFilesSet(),
+	)
 }
 
 func keyword(desc string) string {

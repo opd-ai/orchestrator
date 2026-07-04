@@ -51,13 +51,14 @@ func loadExecutionJournal() (executionJournal, bool, error) {
 		return entry, false, err
 	}
 	if err := json.Unmarshal(data, &entry); err != nil {
-		// Treat malformed JSON as an interrupted write: clear the corrupt file
-		// and continue rather than propagating the parse error.
+		// Treat malformed JSON as an interrupted write: clear and continue.
 		logInfo("journal_corrupt_cleared", "", fmt.Sprintf("invalid JSON treated as interrupted write: %v", err))
-		if clearErr := clearExecutionJournal(); clearErr != nil {
-			return entry, false, clearErr
-		}
-		return entry, false, nil
+		return entry, false, clearExecutionJournal()
+	}
+	if entry.TaskID == "" || entry.Step == "" {
+		// Incomplete payload — treat as an interrupted write.
+		logInfo("journal_incomplete_cleared", "", "incomplete journal payload treated as interrupted write")
+		return entry, false, clearExecutionJournal()
 	}
 	return entry, true, nil
 }
@@ -110,11 +111,6 @@ func recoverExecutionJournal() error {
 	entry, ok, err := loadExecutionJournal()
 	if err != nil || !ok {
 		return err
-	}
-	if entry.TaskID == "" || entry.Step == "" {
-		// Incomplete payload — treat as an interrupted write and clear.
-		logInfo("journal_incomplete_cleared", "", "incomplete journal payload treated as interrupted write")
-		return clearExecutionJournal()
 	}
 
 	switch entry.Step {
