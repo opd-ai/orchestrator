@@ -139,6 +139,14 @@ func TestWriteRunSummaryIncludesBlockedReasons(t *testing.T) {
 	if !strings.Contains(text, "## Blocked task reasons") {
 		t.Fatalf("expected blocked reasons section in summary: %q", text)
 	}
+	retryLinePos := strings.Index(text, "Retry convergence alerts")
+	reasonHeaderPos := strings.Index(text, "## Blocked task reasons")
+	if retryLinePos == -1 || reasonHeaderPos == -1 {
+		t.Fatalf("missing retry line or blocked reasons section: %q", text)
+	}
+	if retryLinePos > reasonHeaderPos {
+		t.Fatalf("expected blocked reasons section after retry convergence line: %q", text)
+	}
 	for _, want := range []string{"- patch_rejected: 1", "- workspace_reset_fail: 2"} {
 		if !strings.Contains(text, want) {
 			t.Fatalf("expected %q in summary: %q", want, text)

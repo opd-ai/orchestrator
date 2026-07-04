@@ -163,12 +163,17 @@ func advanceTaskFile(stats *executionStats) (TaskFile, *Task, loopAction) {
 func blockTask(tf *TaskFile, task *Task, stats *executionStats, reason string) {
 	markBlocked(task)
 	stats.tasksBlocked++
-	if reason != "" {
-		stats.blockedReasons[reason]++
-	}
+	recordBlockedReason(stats, reason)
 	stats.stability.recordBlock()
 	recordSubsystemOutcome(stats.subsystems, task, false)
 	mustSaveTasks(*tf)
+}
+
+func recordBlockedReason(stats *executionStats, reason string) {
+	if reason == "" {
+		return
+	}
+	stats.blockedReasons[reason]++
 }
 
 // setupTaskEnv logs the task start, de-escalates/re-escalates models and tiers,

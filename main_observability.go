@@ -17,6 +17,7 @@ import (
 // observability artifact directory. When a new artifact is written, any files
 // beyond this limit are removed in lexical (oldest-first) order.
 const maxArtifactsPerDir = 50
+const artifactTimestampFormat = "20060102T150405.000000000Z"
 
 // buildFailureArtifact is the structured JSON envelope written to
 // logs/build_failures/<task_id>.json for each build failure.
@@ -94,7 +95,7 @@ func sanitizeArtifactID(taskID string) string {
 }
 
 func artifactTimestamp() string {
-	return time.Now().UTC().Format("20060102T150405.000000000Z")
+	return time.Now().UTC().Format(artifactTimestampFormat)
 }
 
 func writeRunSummary(summary memory.RunSummary) {
