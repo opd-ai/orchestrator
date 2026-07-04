@@ -88,7 +88,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Persist build failures under `logs/build_failures/` with one artifact per task attempt.
+1. [x] Persist build failures under `logs/build_failures/` with one artifact per task attempt.
 2. Persist rejected patches under `logs/rejected_patches/` with the rejection reason in the structured log stream.
 3. Generate `AUTONOMOUS_RUN_SUMMARY.md` at the end of each run with task counts, duration, branch, and blocked-task reasons.
 4. Emit periodic summary metrics for completed tasks, blocked tasks, retries, and applied patches.

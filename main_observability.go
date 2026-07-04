@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"time"
 
@@ -48,7 +49,7 @@ func writeBuildFailure(taskID, output string, retry int) {
 		return
 	}
 
-	path := filepath.Join("logs", "build_failures", taskID+".json")
+	path := filepath.Join("logs", "build_failures", buildFailureArtifactName(taskID, retry))
 	writeArtifact(path, string(data))
 }
 
@@ -57,8 +58,30 @@ func writeRejectedPatch(taskID, diff string) {
 		return
 	}
 
-	path := filepath.Join("logs", "rejected_patches", taskID+".diff")
+	path := filepath.Join("logs", "rejected_patches", rejectedPatchArtifactName(taskID))
 	writeArtifact(path, diff)
+}
+
+var artifactNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+func buildFailureArtifactName(taskID string, retry int) string {
+	return fmt.Sprintf("%s-attempt-%d-%s.json", sanitizeArtifactID(taskID), retry+1, artifactTimestamp())
+}
+
+func rejectedPatchArtifactName(taskID string) string {
+	return fmt.Sprintf("%s-%s.diff", sanitizeArtifactID(taskID), artifactTimestamp())
+}
+
+func sanitizeArtifactID(taskID string) string {
+	safe := artifactNameSanitizer.ReplaceAllString(taskID, "_")
+	if safe == "" {
+		return "task"
+	}
+	return safe
+}
+
+func artifactTimestamp() string {
+	return time.Now().UTC().Format("20060102T150405.000000000Z")
 }
 
 func writeRunSummary(summary memory.RunSummary) {
