@@ -171,7 +171,7 @@ type contextFileScore struct {
 // maxContextFiles entries. Files scoring zero are excluded. Ties are broken by
 // lexical path order to ensure determinism across calls.
 //
-// Weights (ROADMAP Milestone 5):
+// Weights:
 //   - keyword match:        5 (path contains a keyword from the task description)
 //   - successful-edit history: 3 (file appears in the memories-branch patch history)
 //   - git recency:          1 (file was modified within the last 7 days)
