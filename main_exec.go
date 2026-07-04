@@ -217,6 +217,7 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 // applyPatchStep applies the diff to the workspace and records the journal entry.
 // Returns false (and blocks the task) if the apply fails.
 func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats) bool {
+	maybeLogSelfEditAttempt(task.ID, diff)
 	if err := applyDiffToWorkspace(diff, task); err != nil {
 		logError("patch_apply_failed", task.ID, err.Error())
 		blockTask(tf, task, stats)
@@ -242,6 +243,7 @@ func runBuildStep(taskID string) string {
 // completes the task and updates stats; on failure it delegates to
 // resolveBuildFailure.
 func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFiles []string, buildOut string, stats *executionStats, taskCache map[string]string) {
+	maybeLogSelfEditOutcome(task.ID, diff, buildOut)
 	if buildOut != "" {
 		if !dryRun {
 			resolveBuildFailure(tf, task, context, contextFiles, diff, buildOut, stats, taskCache)
@@ -261,6 +263,30 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 	cacheTaskResult(taskCache, task, diff)
 	saveTaskCache(taskCache)
 	mustSaveTasks(*tf)
+}
+
+// periodicMetricsInterval is the number of tasks between periodic summary log
+// emissions. A new snapshot is emitted after every N tasks complete or are blocked.
+const periodicMetricsInterval = 5
+
+// logPeriodicMetrics emits a structured log entry summarising the current
+// execution state when taskCounter is a multiple of periodicMetricsInterval.
+// Operators can monitor long-running sessions without waiting for the end-of-run
+// summary. The taskCounter==0 guard prevents a spurious log before any task has
+// run (0 % periodicMetricsInterval == 0 would otherwise match). The interval
+// check is performed internally to keep the call-site in execute() branch-free.
+func logPeriodicMetrics(stats *executionStats, taskCounter int) {
+	if taskCounter == 0 || taskCounter%periodicMetricsInterval != 0 {
+		return
+	}
+	logInfo("run_metrics_snapshot", "", fmt.Sprintf(
+		"tasks_total=%d completed=%d blocked=%d retries=%d applied_patches=%d",
+		stats.tasksTotal,
+		stats.tasksCompleted,
+		stats.tasksBlocked,
+		stats.totalRetries,
+		stats.successfulPatches,
+	))
 }
 
 // execute runs the main task-execution loop, returning a summary of all work
@@ -294,6 +320,7 @@ func execute() executionStats {
 		}
 		buildOut := runBuildStep(task.ID)
 		handleBuildResult(&tf, task, diff, context, contextFiles, buildOut, &stats, taskCache)
+		logPeriodicMetrics(&stats, taskCounter)
 	}
 }
 

@@ -5,10 +5,16 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/opd-ai/orchestrator/memory"
 )
+
+// maxArtifactsPerDir is the maximum number of files retained in each
+// observability artifact directory. When a new artifact is written, any files
+// beyond this limit are removed in lexical (oldest-first) order.
+const maxArtifactsPerDir = 50
 
 // buildFailureArtifact is the structured JSON envelope written to
 // logs/build_failures/<task_id>.json for each build failure.
@@ -78,12 +84,43 @@ func writeRunSummary(summary memory.RunSummary) {
 }
 
 func writeArtifact(path, content string) {
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
 		logError("artifact_mkdir_failed", path, err.Error())
 		return
 	}
 
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		logError("artifact_write_failed", path, err.Error())
+		return
+	}
+	pruneArtifactDir(dir, maxArtifactsPerDir)
+}
+
+// pruneArtifactDir removes the oldest files in dir until at most maxFiles remain.
+// Files are sorted lexically by name; the first N files in that ordering (which
+// corresponds to chronological order for timestamp-prefixed or task-ID–prefixed
+// names) are removed to bring the directory within the retention limit. Errors
+// are logged but do not halt execution.
+func pruneArtifactDir(dir string, maxFiles int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	// Collect regular files only.
+	files := make([]string, 0, len(entries))
+	for _, e := range entries {
+		if !e.IsDir() {
+			files = append(files, filepath.Join(dir, e.Name()))
+		}
+	}
+	if len(files) <= maxFiles {
+		return
+	}
+	sort.Strings(files)
+	for _, f := range files[:len(files)-maxFiles] {
+		if err := os.Remove(f); err != nil {
+			logError("artifact_prune_failed", f, err.Error())
+		}
 	}
 }

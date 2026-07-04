@@ -3,8 +3,12 @@ package main
 import (
 	"errors"
 	"fmt"
+	"os"
+	"path/filepath"
 	"slices"
+	"strings"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestContextFileWeightScoring(t *testing.T) {
@@ -202,5 +206,104 @@ func TestLoadRecentFilesSetRetriesAfterFailure(t *testing.T) {
 	}
 	if !second["retry.go"] {
 		t.Fatalf("expected retry.go after retry, got %v", second)
+	}
+}
+
+func TestExtractSignaturesReturnsOnlyDeclarationLines(t *testing.T) {
+	src := []byte(strings.Join([]string{
+		"package main",
+		"",
+		"import \"fmt\"",
+		"",
+		"// Doc comment",
+		"func Foo() {",
+		"\tfmt.Println(\"body\")",
+		"}",
+		"",
+		"type Bar struct {",
+		"\tX int",
+		"}",
+		"",
+		"var Count int",
+		"",
+		"const MaxRetries = 5",
+	}, "\n"))
+
+	got := string(extractSignatures(src))
+	for _, want := range []string{"func Foo() {", "type Bar struct {", "var Count int", "const MaxRetries = 5"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("extractSignatures: expected %q in output, got:\n%s", want, got)
+		}
+	}
+	for _, absent := range []string{"package main", "import", "fmt.Println", "X int"} {
+		if strings.Contains(got, absent) {
+			t.Errorf("extractSignatures: unexpected %q in output, got:\n%s", absent, got)
+		}
+	}
+}
+
+func TestExtractSignaturesCapsAtMaxBytesPerFile(t *testing.T) {
+	// Build a source that produces many declaration lines exceeding the cap.
+	var lines []string
+	for i := 0; i < 300; i++ {
+		lines = append(lines, fmt.Sprintf("func Func%04d() {}", i))
+	}
+	src := []byte(strings.Join(lines, "\n"))
+
+	got := extractSignatures(src)
+	if len(got) > maxBytesPerFile {
+		t.Errorf("extractSignatures output %d bytes, want <= %d", len(got), maxBytesPerFile)
+	}
+}
+
+func TestGatherFileContextTruncatesOversizedFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Write a file larger than maxBytesPerFile with only func declarations as
+	// signal — extractSignatures must return something under the cap.
+	var lines []string
+	for i := 0; i < 200; i++ {
+		lines = append(lines, fmt.Sprintf("func Handler%04d() {}", i))
+	}
+	path := filepath.Join(dir, "big.go")
+	if err := os.WriteFile(path, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatalf("write big.go: %v", err)
+	}
+
+	ctx := gatherFileContext([]string{path})
+	if len(ctx) == 0 {
+		t.Fatal("expected non-empty context")
+	}
+	// The context must reference the file header.
+	if !strings.Contains(ctx, "FILE: ") {
+		t.Errorf("expected FILE: header in context, got:\n%s", ctx[:min(len(ctx), 200)])
+	}
+	// And must not exceed per-file cap plus a small overhead for the header line.
+	if len(ctx) > maxBytesPerFile+200 {
+		t.Errorf("gatherFileContext output %d bytes for oversized file, want <= %d", len(ctx), maxBytesPerFile+200)
+	}
+}
+
+func TestTruncateFuncContextAtRuneBoundary(t *testing.T) {
+	// Build a context string just over the limit using multi-byte runes.
+	// prefix has maxBytesPerFile bytes of ASCII, then we add a 2-byte rune
+	// to push the total over the cap.
+	prefix := strings.Repeat("a", maxBytesPerFile)
+	ctx := prefix + "é" // 'é' is a 2-byte UTF-8 rune, pushing total over the cap.
+
+	got := truncateFuncContext(ctx)
+	if len(got) > maxBytesPerFile+len("\n// ... (truncated)") {
+		t.Errorf("truncateFuncContext returned %d bytes, want <= cap+marker", len(got))
+	}
+	if !strings.HasSuffix(got, "\n// ... (truncated)") {
+		t.Errorf("expected truncation marker, got suffix: %q", got[max(0, len(got)-30):])
+	}
+	// Verify the output is valid UTF-8.
+	if !utf8.ValidString(got) {
+		t.Error("truncateFuncContext produced invalid UTF-8")
+	}
+	// The multi-byte rune must have been dropped, not partially included.
+	if strings.Contains(got, "é") {
+		t.Error("expected truncated rune to be absent from output")
 	}
 }
