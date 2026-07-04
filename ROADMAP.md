@@ -2,6 +2,7 @@
 
 This roadmap replaces the prior assessment-style document with a forward-looking implementation plan.
 It is ordered by execution risk: close correctness and recovery gaps first, then improve scheduling, observability, and self-evolution.
+Repository root: `/home/runner/work/orchestrator/orchestrator`.
 
 ## Delivery Rules
 
@@ -16,7 +17,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** interrupted runs must never commit unrelated work, and every run must execute on the branch it claims to use.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main_journal.go`, `/home/runner/work/orchestrator/orchestrator/main.go`, `/home/runner/work/orchestrator/orchestrator/main_exec.go`, `/home/runner/work/orchestrator/orchestrator/main_helper.go`
+**Primary files:** `main_journal.go`, `main.go`, `main_exec.go`, `main_helper.go`
 
 **Implementation steps**
 
@@ -39,7 +40,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** task splitting, replacement, and prioritization must keep the execution DAG valid and deterministic.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main.go`, `/home/runner/work/orchestrator/orchestrator/main_tasks.go`
+**Primary files:** `main.go`, `main_tasks.go`
 
 **Implementation steps**
 
@@ -62,7 +63,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** memory persistence must survive dirty worktrees and must not mutate the operator’s active branch.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/memory/metrics.go`, `/home/runner/work/orchestrator/orchestrator/memory/runlog.go`
+**Primary files:** `memory/metrics.go`, `memory/runlog.go`
 
 **Implementation steps**
 
@@ -83,7 +84,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** operators should be able to understand failures quickly and resume work without manual forensics.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main_observability.go`, `/home/runner/work/orchestrator/orchestrator/main_exec.go`, `/home/runner/work/orchestrator/orchestrator/main_json.go`
+**Primary files:** `main_observability.go`, `main_exec.go`, `main_json.go`
 
 **Implementation steps**
 
@@ -105,7 +106,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** improve first-attempt patch quality by feeding the model better task ordering and smaller, more relevant context.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main.go`, `/home/runner/work/orchestrator/orchestrator/main_context.go`, `/home/runner/work/orchestrator/orchestrator/main_token_budget.go`
+**Primary files:** `main.go`, `main_context.go`, `main_token_budget.go`
 
 **Implementation steps**
 
@@ -127,7 +128,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** self-evolution must stay safe when the orchestrator edits its own critical execution path.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main_helper.go`, `/home/runner/work/orchestrator/orchestrator/main_exec.go`, `/home/runner/work/orchestrator/orchestrator/main_tasks.go`
+**Primary files:** `main_helper.go`, `main_exec.go`, `main_tasks.go`
 
 **Implementation steps**
 
@@ -149,7 +150,7 @@ It is ordered by execution risk: close correctness and recovery gaps first, then
 
 **Objective:** static analysis output should materially influence what the orchestrator works on next.
 
-**Primary files:** `/home/runner/work/orchestrator/orchestrator/main_audit.go`, `/home/runner/work/orchestrator/orchestrator/main.go`
+**Primary files:** `main_audit.go`, `main.go`
 
 **Implementation steps**
 
