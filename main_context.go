@@ -11,6 +11,15 @@ import (
 	"github.com/opd-ai/orchestrator/memory"
 )
 
+var gitRecentFilesOutput = func() ([]byte, error) {
+	return exec.Command("git", "log", "--since=7 days ago", "--name-only", "--format=").Output()
+}
+
+var (
+	cachedRecentFilesSet       map[string]bool
+	cachedRecentFilesSetLoaded bool
+)
+
 // gatherContextForTask returns function-scoped context when a target function is
 // identifiable from the task description, otherwise returns full file context.
 // Parse errors from AnalyzeFiles are intentionally ignored: the partial SymbolMap
@@ -107,6 +116,7 @@ func truncateFuncContext(ctx string) string {
 // considered as a match candidate. Very short names (e.g. "id", "ok") produce too
 // many false positives when searched as substrings of task descriptions.
 const minSymbolNameLen = 4
+
 // (case-insensitive). Adjacent identifier characters (letters, digits, underscore)
 // on either side disqualify the match.
 func containsWord(text, word string) bool {
@@ -185,7 +195,17 @@ func scoreContextFiles(candidates []string, kw string, historySet, recentSet map
 		}
 		result = append(result, c.path)
 	}
+	if len(result) == 0 {
+		return fallbackContextFiles(candidates)
+	}
 	return result
+}
+
+func fallbackContextFiles(candidates []string) []string {
+	if len(candidates) > maxContextFiles {
+		candidates = candidates[:maxContextFiles]
+	}
+	return append([]string(nil), candidates...)
 }
 
 // contextFileWeight returns the weighted relevance score for a single candidate.
@@ -227,7 +247,11 @@ func loadEditHistorySet() map[string]bool {
 // loadRecentFilesSet returns the set of Go files modified in the last 7 days
 // according to git log.
 func loadRecentFilesSet() map[string]bool {
-	out, err := exec.Command("git", "log", "--since=7 days ago", "--name-only", "--format=").Output()
+	if cachedRecentFilesSetLoaded {
+		return cachedRecentFilesSet
+	}
+	out, err := gitRecentFilesOutput()
+	cachedRecentFilesSetLoaded = true
 	if err != nil {
 		return nil
 	}
@@ -238,5 +262,6 @@ func loadRecentFilesSet() map[string]bool {
 			set[line] = true
 		}
 	}
-	return set
+	cachedRecentFilesSet = set
+	return cachedRecentFilesSet
 }

@@ -18,12 +18,12 @@ func TestContextFileWeightScoring(t *testing.T) {
 		kw   string
 		want int
 	}{
-		{"keyonly.go", "key", 5},     // keyword match only
-		{"history.go", "other", 3},   // history match only
-		{"recent.go", "other", 1},    // recency match only
-		{"keyhistory.go", "key", 8},  // keyword(5) + history(3)
-		{"nothing.go", "key", 0},     // no match
-		{"keyonly.go", "", 0},        // empty keyword → no keyword score
+		{"keyonly.go", "key", 5},    // keyword match only
+		{"history.go", "other", 3},  // history match only
+		{"recent.go", "other", 1},   // recency match only
+		{"keyhistory.go", "key", 8}, // keyword(5) + history(3)
+		{"nothing.go", "key", 0},    // no match
+		{"keyonly.go", "", 0},       // empty keyword → no keyword score
 	}
 
 	for _, tc := range cases {
@@ -109,5 +109,58 @@ func TestScoreContextFilesEmptyKeyword(t *testing.T) {
 	want := []string{"history.go", "recent.go"}
 	if !slices.Equal(got, want) {
 		t.Fatalf("scoreContextFiles(empty kw) = %v, want %v", got, want)
+	}
+}
+
+func TestScoreContextFilesFallsBackWhenNothingScores(t *testing.T) {
+	candidates := []string{
+		"zeta.go",
+		"alpha.go",
+		"beta.go",
+		"gamma.go",
+		"delta.go",
+		"epsilon.go",
+	}
+
+	got := scoreContextFiles(candidates, "", nil, nil)
+	want := candidates[:maxContextFiles]
+	if !slices.Equal(got, want) {
+		t.Fatalf("scoreContextFiles(no scores) = %v, want %v", got, want)
+	}
+}
+
+func TestLoadRecentFilesSetCachesResult(t *testing.T) {
+	originalOutput := gitRecentFilesOutput
+	originalCache := cachedRecentFilesSet
+	originalLoaded := cachedRecentFilesSetLoaded
+	t.Cleanup(func() {
+		gitRecentFilesOutput = originalOutput
+		cachedRecentFilesSet = originalCache
+		cachedRecentFilesSetLoaded = originalLoaded
+	})
+
+	cachedRecentFilesSet = nil
+	cachedRecentFilesSetLoaded = false
+
+	calls := 0
+	gitRecentFilesOutput = func() ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return []byte("first.go\nnotes.txt\n"), nil
+		}
+		return []byte("second.go\n"), nil
+	}
+
+	first := loadRecentFilesSet()
+	second := loadRecentFilesSet()
+
+	if calls != 1 {
+		t.Fatalf("gitRecentFilesOutput called %d times, want 1", calls)
+	}
+	if !first["first.go"] || !second["first.go"] {
+		t.Fatalf("expected cached result to contain first.go: first=%v second=%v", first, second)
+	}
+	if first["second.go"] || second["second.go"] {
+		t.Fatalf("expected cached result to ignore later output: first=%v second=%v", first, second)
 	}
 }
