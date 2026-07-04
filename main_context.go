@@ -12,7 +12,7 @@ import (
 )
 
 var gitRecentFilesOutput = func() ([]byte, error) {
-	return exec.Command("git", "log", "--since=7 days ago", "--name-only", "--format=").Output()
+	return exec.Command("git", "log", "--since=7.days.ago", "--name-only", "--format=").Output()
 }
 
 var (
@@ -251,7 +251,6 @@ func loadRecentFilesSet() map[string]bool {
 		return cachedRecentFilesSet
 	}
 	out, err := gitRecentFilesOutput()
-	cachedRecentFilesSetLoaded = true
 	if err != nil {
 		return nil
 	}
@@ -263,5 +262,6 @@ func loadRecentFilesSet() map[string]bool {
 		}
 	}
 	cachedRecentFilesSet = set
+	cachedRecentFilesSetLoaded = true
 	return cachedRecentFilesSet
 }

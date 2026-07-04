@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"testing"
@@ -162,5 +163,41 @@ func TestLoadRecentFilesSetCachesResult(t *testing.T) {
 	}
 	if first["second.go"] || second["second.go"] {
 		t.Fatalf("expected cached result to ignore later output: first=%v second=%v", first, second)
+	}
+}
+
+func TestLoadRecentFilesSetRetriesAfterFailure(t *testing.T) {
+	originalOutput := gitRecentFilesOutput
+	originalCache := cachedRecentFilesSet
+	originalLoaded := cachedRecentFilesSetLoaded
+	t.Cleanup(func() {
+		gitRecentFilesOutput = originalOutput
+		cachedRecentFilesSet = originalCache
+		cachedRecentFilesSetLoaded = originalLoaded
+	})
+
+	cachedRecentFilesSet = nil
+	cachedRecentFilesSetLoaded = false
+
+	calls := 0
+	gitRecentFilesOutput = func() ([]byte, error) {
+		calls++
+		if calls == 1 {
+			return nil, errors.New("git log failed")
+		}
+		return []byte("retry.go\n"), nil
+	}
+
+	first := loadRecentFilesSet()
+	second := loadRecentFilesSet()
+
+	if first != nil {
+		t.Fatalf("expected nil result on first failure, got %v", first)
+	}
+	if calls != 2 {
+		t.Fatalf("gitRecentFilesOutput called %d times, want 2", calls)
+	}
+	if !second["retry.go"] {
+		t.Fatalf("expected retry.go after retry, got %v", second)
 	}
 }
