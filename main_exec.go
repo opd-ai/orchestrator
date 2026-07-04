@@ -217,6 +217,9 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 // applyPatchStep applies the diff to the workspace and records the journal entry.
 // Returns false (and blocks the task) if the apply fails.
 func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats) bool {
+	if touchesProtectedFile(diff) {
+		logSelfEditAttempt(task.ID, diff)
+	}
 	if err := applyDiffToWorkspace(diff, task); err != nil {
 		logError("patch_apply_failed", task.ID, err.Error())
 		blockTask(tf, task, stats)
@@ -242,7 +245,11 @@ func runBuildStep(taskID string) string {
 // completes the task and updates stats; on failure it delegates to
 // resolveBuildFailure.
 func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFiles []string, buildOut string, stats *executionStats, taskCache map[string]string) {
+	isProtected := touchesProtectedFile(diff)
 	if buildOut != "" {
+		if isProtected {
+			logSelfEditOutcome(task.ID, false, buildOut)
+		}
 		if !dryRun {
 			resolveBuildFailure(tf, task, context, contextFiles, diff, buildOut, stats, taskCache)
 		}
@@ -252,6 +259,9 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 		logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
 	} else if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
 		logError("journal_write_failed", task.ID, err.Error())
+	}
+	if isProtected {
+		logSelfEditOutcome(task.ID, true, "")
 	}
 	completeTask(task)
 	stats.recordSuccessfulPatch(diff, task)
