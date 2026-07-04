@@ -21,7 +21,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Extend the execution journal to persist the task ID, patch digest, touched files, and last durable step.
+1. Extend the execution journal to persist the task ID, a normalized patch SHA-256 digest, touched files, and the last durable step.
 2. Before recovering a `built` state, verify that the current workspace still matches the recorded patch metadata.
 3. Restrict recovery commits to the recorded touched files instead of committing the whole worktree.
 4. Abort recovery when journal metadata and workspace state diverge, and emit a structured log explaining the mismatch.
@@ -110,7 +110,7 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Score candidate context files using task keywords, git-tracked file recency, and overlap with files associated with prior successful edits from persisted memory data.
+1. Score candidate context files using task keywords, git-tracked file recency, and exact file-path matches against successful-edit history persisted by the adaptive memory system on the `memories` ref.
 2. Enforce a per-file context cap before concatenating raw file contents.
 3. Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
 4. Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
