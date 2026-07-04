@@ -243,6 +243,8 @@ func journalStep(entry executionJournal) string {
 }
 
 func hashSHA256Normalized(s string) string {
+	// Normalize line endings and surrounding whitespace so journal digest
+	// comparisons remain stable across platforms and interrupted-write restarts.
 	normalized := strings.TrimSpace(strings.ReplaceAll(s, "\r\n", "\n"))
 	digest := sha256.Sum256([]byte(normalized))
 	return fmt.Sprintf("%x", digest)
