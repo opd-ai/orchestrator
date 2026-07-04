@@ -263,6 +263,25 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 	mustSaveTasks(*tf)
 }
 
+// periodicMetricsInterval is the number of tasks between periodic summary log
+// emissions. A new snapshot is emitted after every N tasks complete or are blocked.
+const periodicMetricsInterval = 5
+
+// logPeriodicMetrics emits a structured log entry summarising the current
+// execution state. It is called every periodicMetricsInterval tasks so that
+// operators can monitor long-running sessions without waiting for the end-of-run
+// summary.
+func logPeriodicMetrics(stats *executionStats, taskCounter int) {
+	logInfo("run_metrics_snapshot", "", fmt.Sprintf(
+		"tasks_total=%d completed=%d blocked=%d retries=%d applied_patches=%d",
+		stats.tasksTotal,
+		stats.tasksCompleted,
+		stats.tasksBlocked,
+		stats.totalRetries,
+		stats.successfulPatches,
+	))
+}
+
 // execute runs the main task-execution loop, returning a summary of all work
 // performed in the session.
 func execute() executionStats {
@@ -294,6 +313,9 @@ func execute() executionStats {
 		}
 		buildOut := runBuildStep(task.ID)
 		handleBuildResult(&tf, task, diff, context, contextFiles, buildOut, &stats, taskCache)
+		if taskCounter%periodicMetricsInterval == 0 {
+			logPeriodicMetrics(&stats, taskCounter)
+		}
 	}
 }
 
