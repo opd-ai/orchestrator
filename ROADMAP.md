@@ -2,7 +2,7 @@
 
 This roadmap replaces the prior assessment-style document with a forward-looking implementation plan.
 It is ordered by execution risk: close correctness and recovery gaps first, then improve scheduling, observability, and self-evolution.
-Repository root: `/home/runner/work/orchestrator/orchestrator`.
+All file references below are relative to the repository root.
 
 ## Delivery Rules
 
@@ -110,7 +110,7 @@ Repository root: `/home/runner/work/orchestrator/orchestrator`.
 
 **Implementation steps**
 
-1. Score candidate context files using task keywords, file recency, and overlap with prior successful edits.
+1. Score candidate context files using task keywords, git-tracked file recency, and overlap with files associated with prior successful edits from persisted memory data.
 2. Enforce a per-file context cap before concatenating raw file contents.
 3. Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
 4. Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
