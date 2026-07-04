@@ -291,3 +291,51 @@ func TestRecoverExecutionJournalBuiltFailsOnWorkspaceMismatch(t *testing.T) {
 		t.Fatalf("expected no recovery commit, got %q", logOut)
 	}
 }
+
+func TestRecoverExecutionJournalCorruptJSONClearsAndContinues(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	// Write a corrupt (non-JSON) journal file simulating an interrupted write.
+	if err := os.WriteFile(journalFile, []byte("{not valid json"), 0o644); err != nil {
+		t.Fatalf("write corrupt journal: %v", err)
+	}
+
+	if err := recoverExecutionJournal(); err != nil {
+		t.Fatalf("expected corrupt journal to be cleared without error, got: %v", err)
+	}
+	if _, statErr := os.Stat(journalFile); !os.IsNotExist(statErr) {
+		t.Fatalf("expected corrupt journal file to be cleared, stat err=%v", statErr)
+	}
+}
+
+func TestRecoverExecutionJournalIncompletePayloadClearsAndContinues(t *testing.T) {
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	tmpDir := t.TempDir()
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(wd) })
+
+	// Write a syntactically valid JSON payload with missing required fields.
+	if err := os.WriteFile(journalFile, []byte(`{"task_id":"","step":""}`), 0o644); err != nil {
+		t.Fatalf("write incomplete journal: %v", err)
+	}
+
+	if err := recoverExecutionJournal(); err != nil {
+		t.Fatalf("expected incomplete journal to be cleared without error, got: %v", err)
+	}
+	if _, statErr := os.Stat(journalFile); !os.IsNotExist(statErr) {
+		t.Fatalf("expected incomplete journal file to be cleared, stat err=%v", statErr)
+	}
+}
