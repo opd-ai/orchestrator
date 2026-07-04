@@ -205,6 +205,7 @@ func fallbackContextFiles(candidates []string) []string {
 	if len(candidates) > maxContextFiles {
 		candidates = candidates[:maxContextFiles]
 	}
+	// Copy the slice so callers cannot observe later mutations to the input.
 	return append([]string(nil), candidates...)
 }
 

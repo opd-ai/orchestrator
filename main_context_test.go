@@ -114,6 +114,8 @@ func TestScoreContextFilesEmptyKeyword(t *testing.T) {
 }
 
 func TestScoreContextFilesFallsBackWhenNothingScores(t *testing.T) {
+	// Fallback preserves the existing candidate order, which is already
+	// deterministic for resolveContextFiles because allGoFiles uses git ls-files.
 	candidates := []string{
 		"zeta.go",
 		"alpha.go",
