@@ -73,6 +73,23 @@ func logSelfEditOutcome(taskID string, success bool, buildErr string) {
 	}
 }
 
+// maybeLogSelfEditAttempt emits a self_edit_attempt log entry when the diff
+// touches a protected file. It is a no-op for ordinary task patches.
+func maybeLogSelfEditAttempt(taskID, diff string) {
+	if touchesProtectedFile(diff) {
+		logSelfEditAttempt(taskID, diff)
+	}
+}
+
+// maybeLogSelfEditOutcome emits a self_edit_committed or self_edit_reverted log
+// entry when the diff touches a protected file. buildOut is the compiler output
+// on failure, or empty string on success.
+func maybeLogSelfEditOutcome(taskID, diff, buildOut string) {
+	if touchesProtectedFile(diff) {
+		logSelfEditOutcome(taskID, buildOut == "", buildOut)
+	}
+}
+
 // selfEditPreviewBytes is the maximum number of bytes of a protected-file diff
 // included in the self_edit_attempt log entry.
 const selfEditPreviewBytes = 512

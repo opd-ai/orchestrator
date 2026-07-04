@@ -217,9 +217,7 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 // applyPatchStep applies the diff to the workspace and records the journal entry.
 // Returns false (and blocks the task) if the apply fails.
 func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats) bool {
-	if touchesProtectedFile(diff) {
-		logSelfEditAttempt(task.ID, diff)
-	}
+	maybeLogSelfEditAttempt(task.ID, diff)
 	if err := applyDiffToWorkspace(diff, task); err != nil {
 		logError("patch_apply_failed", task.ID, err.Error())
 		blockTask(tf, task, stats)
@@ -245,11 +243,8 @@ func runBuildStep(taskID string) string {
 // completes the task and updates stats; on failure it delegates to
 // resolveBuildFailure.
 func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFiles []string, buildOut string, stats *executionStats, taskCache map[string]string) {
-	isProtected := touchesProtectedFile(diff)
+	maybeLogSelfEditOutcome(task.ID, diff, buildOut)
 	if buildOut != "" {
-		if isProtected {
-			logSelfEditOutcome(task.ID, false, buildOut)
-		}
 		if !dryRun {
 			resolveBuildFailure(tf, task, context, contextFiles, diff, buildOut, stats, taskCache)
 		}
@@ -259,9 +254,6 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 		logInfo("dry_run_task_ready", task.ID, "patch_generated=true patch_valid=true would_apply=true")
 	} else if err := recordExecutionJournal(task.ID, journalStepBuilt, diff); err != nil {
 		logError("journal_write_failed", task.ID, err.Error())
-	}
-	if isProtected {
-		logSelfEditOutcome(task.ID, true, "")
 	}
 	completeTask(task)
 	stats.recordSuccessfulPatch(diff, task)
@@ -278,10 +270,14 @@ func handleBuildResult(tf *TaskFile, task *Task, diff, context string, contextFi
 const periodicMetricsInterval = 5
 
 // logPeriodicMetrics emits a structured log entry summarising the current
-// execution state. It is called every periodicMetricsInterval tasks so that
-// operators can monitor long-running sessions without waiting for the end-of-run
-// summary.
+// execution state when taskCounter is a multiple of periodicMetricsInterval.
+// Operators can monitor long-running sessions without waiting for the end-of-run
+// summary. The interval check is performed internally to keep the call-site in
+// execute() branch-free.
 func logPeriodicMetrics(stats *executionStats, taskCounter int) {
+	if taskCounter == 0 || taskCounter%periodicMetricsInterval != 0 {
+		return
+	}
 	logInfo("run_metrics_snapshot", "", fmt.Sprintf(
 		"tasks_total=%d completed=%d blocked=%d retries=%d applied_patches=%d",
 		stats.tasksTotal,
@@ -323,9 +319,7 @@ func execute() executionStats {
 		}
 		buildOut := runBuildStep(task.ID)
 		handleBuildResult(&tf, task, diff, context, contextFiles, buildOut, &stats, taskCache)
-		if taskCounter%periodicMetricsInterval == 0 {
-			logPeriodicMetrics(&stats, taskCounter)
-		}
+		logPeriodicMetrics(&stats, taskCounter)
 	}
 }
 
