@@ -21,6 +21,7 @@ type executionStats struct {
 	highRiskPatches      int
 	modifiedFiles        map[string]int
 	failurePatterns      map[string]int
+	blockedReasons       map[string]int
 	convergenceSamples   int
 	convergenceAlerts    int
 	stability            stabilityMonitor
@@ -46,6 +47,7 @@ func newExecutionStats() executionStats {
 	return executionStats{
 		modifiedFiles:   make(map[string]int),
 		failurePatterns: make(map[string]int),
+		blockedReasons:  make(map[string]int),
 		subsystems:      make(map[string]*subsystemMetrics),
 	}
 }
@@ -92,6 +94,7 @@ func runExecutionMode() {
 		RetryConvergenceSamples: stats.convergenceSamples,
 		RetryConvergenceAlerts:  stats.convergenceAlerts,
 		FailurePatterns:         copyCounts(stats.failurePatterns),
+		BlockedTaskReasons:      copyCounts(stats.blockedReasons),
 		ModifiedFiles:           copyCounts(stats.modifiedFiles),
 		AvgInferenceLatencyMs:   averageInferenceLatency(),
 		AvgPatchConfidence:      averageFloat(stats.totalPatchConfidence, stats.successfulPatches),
@@ -157,12 +160,20 @@ func advanceTaskFile(stats *executionStats) (TaskFile, *Task, loopAction) {
 }
 
 // blockTask marks task as blocked, records the failure in stats, and persists tf.
-func blockTask(tf *TaskFile, task *Task, stats *executionStats) {
+func blockTask(tf *TaskFile, task *Task, stats *executionStats, reason string) {
 	markBlocked(task)
 	stats.tasksBlocked++
+	recordBlockedReason(stats, reason)
 	stats.stability.recordBlock()
 	recordSubsystemOutcome(stats.subsystems, task, false)
 	mustSaveTasks(*tf)
+}
+
+func recordBlockedReason(stats *executionStats, reason string) {
+	if reason == "" {
+		return
+	}
+	stats.blockedReasons[reason]++
 }
 
 // setupTaskEnv logs the task start, de-escalates/re-escalates models and tiers,
@@ -178,7 +189,7 @@ func setupTaskEnv(tf *TaskFile, task *Task, stats *executionStats) bool {
 	maybeEscalateModel(task, scorePatchRisk("", task), stats.tasksTotal)
 	if err := ensureCleanWorkspace(task.ID); err != nil {
 		logError("workspace_reset_failed", task.ID, err.Error())
-		blockTask(tf, task, stats)
+		blockTask(tf, task, stats, "workspace_reset_failed")
 		return false
 	}
 	return true
@@ -195,8 +206,7 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 	if err := validatePatch(diff, contextFiles, task); err == nil {
 		return diff, context, contextFiles, true
 	} else if strings.Contains(err.Error(), "too large") {
-		writeRejectedPatch(task.ID, diff)
-		logInfo("patch_too_large_retrying", task.ID, err.Error())
+		recordRejectedPatch(task.ID, diff, err.Error(), "patch_too_large_retrying", false)
 		task.RetryCount++
 		stats.totalRetries++
 		if task.RetryCount < maxRetries {
@@ -207,9 +217,8 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 		splitTask(tf, task)
 		mustSaveTasks(*tf)
 	} else {
-		writeRejectedPatch(task.ID, diff)
-		logError("patch_rejected", task.ID, err.Error())
-		blockTask(tf, task, stats)
+		recordRejectedPatch(task.ID, diff, err.Error(), "patch_rejected", true)
+		blockTask(tf, task, stats, "patch_rejected")
 	}
 	return diff, context, contextFiles, false
 }
@@ -220,7 +229,7 @@ func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats
 	maybeLogSelfEditAttempt(task.ID, diff)
 	if err := applyDiffToWorkspace(diff, task); err != nil {
 		logError("patch_apply_failed", task.ID, err.Error())
-		blockTask(tf, task, stats)
+		blockTask(tf, task, stats, "patch_apply_failed")
 		return false
 	}
 	if err := recordExecutionJournal(task.ID, journalStepPatched, diff); err != nil {
@@ -411,7 +420,7 @@ func attemptBuildFixRetries(
 		if err := validatePatch(fixDiff, contextFiles, task); err != nil {
 			// Validation happens before append/apply, so a rejected fix diff is not
 			// included in appliedFixDiffs.
-			writeRejectedPatch(task.ID, fixDiff)
+			recordRejectedPatch(task.ID, fixDiff, err.Error(), "fix_patch_rejected", true)
 			return appliedFixDiffs, false
 		}
 		if !dryRun {

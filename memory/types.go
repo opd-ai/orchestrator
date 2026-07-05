@@ -24,6 +24,7 @@ type RunSummary struct {
 	RetryConvergenceSamples int            `json:"retry_convergence_samples"`
 	RetryConvergenceAlerts  int            `json:"retry_convergence_alerts"`
 	FailurePatterns         map[string]int `json:"failure_patterns,omitempty"`
+	BlockedTaskReasons      map[string]int `json:"blocked_task_reasons,omitempty"`
 	ModifiedFiles           map[string]int `json:"modified_files,omitempty"`
 	AvgInferenceLatencyMs   float64        `json:"avg_inference_latency_ms"`
 	AvgPatchConfidence      float64        `json:"avg_patch_confidence"`

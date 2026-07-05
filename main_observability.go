@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/opd-ai/orchestrator/memory"
@@ -15,6 +17,7 @@ import (
 // observability artifact directory. When a new artifact is written, any files
 // beyond this limit are removed in lexical (oldest-first) order.
 const maxArtifactsPerDir = 50
+const artifactTimestampFormat = "20060102T150405.000000000Z"
 
 // buildFailureArtifact is the structured JSON envelope written to
 // logs/build_failures/<task_id>.json for each build failure.
@@ -48,7 +51,7 @@ func writeBuildFailure(taskID, output string, retry int) {
 		return
 	}
 
-	path := filepath.Join("logs", "build_failures", taskID+".json")
+	path := filepath.Join("logs", "build_failures", buildFailureArtifactName(taskID, retry))
 	writeArtifact(path, string(data))
 }
 
@@ -57,8 +60,42 @@ func writeRejectedPatch(taskID, diff string) {
 		return
 	}
 
-	path := filepath.Join("logs", "rejected_patches", taskID+".diff")
+	path := filepath.Join("logs", "rejected_patches", rejectedPatchArtifactName(taskID))
 	writeArtifact(path, diff)
+}
+
+func recordRejectedPatch(taskID, diff, reason, event string, asError bool) {
+	writeRejectedPatch(taskID, diff)
+	if reason == "" {
+		return
+	}
+	if asError {
+		logError(event, taskID, reason)
+		return
+	}
+	logInfo(event, taskID, reason)
+}
+
+var artifactNameSanitizer = regexp.MustCompile(`[^a-zA-Z0-9._-]+`)
+
+func buildFailureArtifactName(taskID string, retry int) string {
+	return fmt.Sprintf("%s-attempt-%d-%s.json", sanitizeArtifactID(taskID), retry+1, artifactTimestamp())
+}
+
+func rejectedPatchArtifactName(taskID string) string {
+	return fmt.Sprintf("%s-%s.diff", sanitizeArtifactID(taskID), artifactTimestamp())
+}
+
+func sanitizeArtifactID(taskID string) string {
+	safe := artifactNameSanitizer.ReplaceAllString(taskID, "_")
+	if safe == "" {
+		return "task"
+	}
+	return safe
+}
+
+func artifactTimestamp() string {
+	return time.Now().UTC().Format(artifactTimestampFormat)
 }
 
 func writeRunSummary(summary memory.RunSummary) {
@@ -70,6 +107,7 @@ func writeRunSummary(summary memory.RunSummary) {
 - Execution duration: %ds
 - Git branch: %s
 - Retry convergence alerts: %d/%d
+%s
 `,
 		summary.TasksTotal,
 		summary.TasksCompleted,
@@ -78,9 +116,22 @@ func writeRunSummary(summary memory.RunSummary) {
 		summary.Branch,
 		summary.RetryConvergenceAlerts,
 		summary.RetryConvergenceSamples,
+		blockedReasonsSection(summary.BlockedTaskReasons),
 	)
 
 	writeArtifact("AUTONOMOUS_RUN_SUMMARY.md", content)
+}
+
+func blockedReasonsSection(reasons map[string]int) string {
+	if len(reasons) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(reasons))
+	for reason, count := range reasons {
+		lines = append(lines, fmt.Sprintf("- %s: %d", reason, count))
+	}
+	sort.Strings(lines)
+	return "\n## Blocked task reasons\n\n" + strings.Join(lines, "\n")
 }
 
 func writeArtifact(path, content string) {
