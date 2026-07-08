@@ -16,3 +16,9 @@ func enforceTokenBudget(prompt string) string {
 	}
 	return string(runes[:maxPromptChars])
 }
+
+// enforcePromptBudget applies the token budget to a prompt string, ensuring it doesn't exceed the maximum allowed characters.
+// This function is used to enforce the prompt budget before sending prompts to the LLM.
+func enforcePromptBudget(prompt string) string {
+	return enforceTokenBudget(prompt)
+}

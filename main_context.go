@@ -24,17 +24,20 @@ var (
 // identifiable from the task description, otherwise returns full file context.
 // Parse errors from AnalyzeFiles are intentionally ignored: the partial SymbolMap
 // returned for successfully-parsed files is still useful for context narrowing.
+// The returned context is enforced to fit within the prompt budget.
 func gatherContextForTask(task *Task, files []string) string {
 	sm, _ := audit.AnalyzeFiles(files)
 	if len(sm.Functions) == 0 && len(sm.Structs) == 0 {
-		return gatherFileContext(files)
+		context := gatherFileContext(files)
+		return enforcePromptBudget(context)
 	}
 	if key := matchSymbol(task.Description, sm); key != "" {
 		if ctx := funcScopedContext(key, sm, task.Files); ctx != "" {
-			return ctx
+			return enforcePromptBudget(ctx)
 		}
 	}
-	return gatherFileContext(files)
+	context := gatherFileContext(files)
+	return enforcePromptBudget(context)
 }
 
 // matchSymbol returns the SymbolMap key of the best-matching function from sm

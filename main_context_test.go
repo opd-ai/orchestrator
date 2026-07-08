@@ -307,3 +307,88 @@ func TestTruncateFuncContextAtRuneBoundary(t *testing.T) {
 		t.Error("expected truncated rune to be absent from output")
 	}
 }
+
+func TestScoreContextFilesDeterminism(t *testing.T) {
+	candidates := []string{
+		"module_key_helper.go", // keyword(5) + history(3) = 8
+		"module_keyonly.go",    // keyword(5) = 5
+		"module_history.go",    // history(3) = 3
+		"module_recent.go",     // recency(1) = 1
+		"module_nothing.go",    // 0 → excluded
+	}
+	history := map[string]bool{
+		"module_key_helper.go": true,
+		"module_history.go":    true,
+	}
+	recent := map[string]bool{
+		"module_key_helper.go": true,
+		"module_recent.go":     true,
+	}
+
+	result := scoreContextFiles(candidates, "key", history, recent)
+
+	// Check that results are sorted by score (descending) and then by path (ascending)
+	if len(result) != 4 {
+		t.Errorf("Expected 4 results, got %d", len(result))
+	}
+
+	// Check that the first result has the highest score (8)
+	if result[0] != "module_key_helper.go" {
+		t.Errorf("Expected first result to be module_key_helper.go, got %s", result[0])
+	}
+
+	// Check that the second result has score 5
+	if result[1] != "module_keyonly.go" {
+		t.Errorf("Expected second result to be module_keyonly.go, got %s", result[1])
+	}
+}
+
+func TestGatherFileContextTruncation(t *testing.T) {
+	// Create a test file with content that exceeds maxBytesPerFile
+	testFile := "test_truncation.go"
+	testContent := make([]byte, maxBytesPerFile+100)
+	for i := range testContent {
+		testContent[i] = 'A'
+	}
+
+	// Write test content to file
+	err := os.WriteFile(testFile, testContent, 0644)
+	if err != nil {
+		t.Fatalf("Failed to create test file: %v", err)
+	}
+	defer os.Remove(testFile)
+
+	// Test gatherFileContext with truncation
+	context := gatherFileContext([]string{testFile})
+
+	// Should contain truncated content
+	if !strings.Contains(context, "// ... (truncated due to size limit)") {
+		t.Error("Expected truncated content marker")
+	}
+
+	// Should not exceed maxPromptChars
+	if len(context) > maxPromptChars {
+		t.Errorf("Context exceeds max prompt chars: %d > %d", len(context), maxPromptChars)
+	}
+}
+
+func TestEnforcePromptBudget(t *testing.T) {
+	// Test with content that exceeds the limit
+	longContent := strings.Repeat("A", maxPromptChars+100)
+
+	budgeted := enforcePromptBudget(longContent)
+
+	// Should be truncated to maxPromptChars
+	if len(budgeted) != maxPromptChars {
+		t.Errorf("Expected truncated content to be %d chars, got %d", maxPromptChars, len(budgeted))
+	}
+
+	// Test with content that's within limit
+	shortContent := "Short content"
+	budgetedShort := enforcePromptBudget(shortContent)
+
+	// Should remain unchanged
+	if budgetedShort != shortContent {
+		t.Errorf("Expected short content to remain unchanged")
+	}
+}
