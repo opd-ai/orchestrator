@@ -227,7 +227,9 @@ func gatherAndValidateDiff(tf *TaskFile, task *Task, taskCache map[string]string
 // Returns false (and blocks the task) if the apply fails.
 func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats) bool {
 	maybeLogSelfEditAttempt(task.ID, diff)
-	if err := applyDiffToWorkspace(diff, task); err != nil {
+
+	err := applyPatchForTask(diff, task)
+	if err != nil {
 		logError("patch_apply_failed", task.ID, err.Error())
 		blockTask(tf, task, stats, "patch_apply_failed")
 		return false
@@ -236,6 +238,15 @@ func applyPatchStep(tf *TaskFile, task *Task, diff string, stats *executionStats
 		logError("journal_write_failed", task.ID, err.Error())
 	}
 	return true
+}
+
+// applyPatchForTask applies a diff using the appropriate method based on whether
+// it touches protected files.
+func applyPatchForTask(diff string, task *Task) error {
+	if touchesProtectedFile(diff) {
+		return validateAndApplyProtectedPatch(diff, task)
+	}
+	return applyDiffToWorkspace(diff, task)
 }
 
 // runBuildStep skips the build in dry-run mode (returning "") or runs build()

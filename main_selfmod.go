@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"strings"
 )
 
@@ -93,3 +94,84 @@ func maybeLogSelfEditOutcome(taskID, diff, buildOut string) {
 // selfEditPreviewBytes is the maximum number of bytes of a protected-file diff
 // included in the self_edit_attempt log entry.
 const selfEditPreviewBytes = 512
+
+// validateAndApplyProtectedPatch applies a diff to protected files using a
+// two-step validation approach: backup current state, apply patch, run build/test,
+// and only keep changes if validation passes. On failure, the original file
+// contents are restored.
+func validateAndApplyProtectedPatch(diff string, task *Task) error {
+	// Get list of files the patch will modify
+	touchedFiles := filesTouched(diff)
+	if len(touchedFiles) == 0 {
+		return fmt.Errorf("no files touched by diff")
+	}
+
+	// Backup current state of touched files
+	backups, err := backupFiles(touchedFiles)
+	if err != nil {
+		return err
+	}
+
+	// Apply the patch
+	if err := applyPatch(diff); err != nil {
+		// Restore backups on patch apply failure
+		if restoreErr := restoreFiles(backups); restoreErr != nil {
+			return fmt.Errorf("patch apply failed: %v; additionally failed to restore files: %w", err, restoreErr)
+		}
+		return fmt.Errorf("patch apply failed: %w", err)
+	}
+
+	// Run build and test validation
+	buildOut := build()
+	if buildOut != "" {
+		// Validation failed: restore backups
+		if restoreErr := restoreFiles(backups); restoreErr != nil {
+			return fmt.Errorf("validation failed: %s; additionally failed to restore files: %w", buildOut, restoreErr)
+		}
+		return fmt.Errorf("validation failed: %s", buildOut)
+	}
+
+	// Validation passed: changes are kept
+	return nil
+}
+
+// backupFiles reads and stores the current content of each file.
+// Returns a map of filename to content (nil means file didn't exist).
+func backupFiles(files []string) (map[string][]byte, error) {
+	backups := make(map[string][]byte, len(files))
+	for _, f := range files {
+		data, err := os.ReadFile(f)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("failed to read %s for backup: %w", f, err)
+			}
+			backups[f] = nil // Mark as new file
+			continue
+		}
+		backups[f] = data
+	}
+	return backups, nil
+}
+
+// restoreFiles restores files from the backup map.
+// nil value in the map means the file was newly created and should be deleted.
+func restoreFiles(backups map[string][]byte) error {
+	var errs []string
+	for f, data := range backups {
+		if data == nil {
+			// File was newly created, remove it
+			if err := os.Remove(f); err != nil && !os.IsNotExist(err) {
+				errs = append(errs, fmt.Sprintf("remove new file %s: %v", f, err))
+			}
+		} else {
+			// Restore original content
+			if err := os.WriteFile(f, data, 0o644); err != nil {
+				errs = append(errs, fmt.Sprintf("restore %s: %v", f, err))
+			}
+		}
+	}
+	if len(errs) > 0 {
+		return fmt.Errorf("restore errors: %s", strings.Join(errs, "; "))
+	}
+	return nil
+}

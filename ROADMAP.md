@@ -128,15 +128,15 @@ All file references below are relative to the repository root.
 
 **Objective:** self-evolution must stay safe when the orchestrator edits its own critical execution path.
 
-**Primary files:** `main_helper.go`, `main_exec.go`, `main_tasks.go`
+**Primary files:** `main_helper.go`, `main_exec.go`, `main_tasks.go`, `main_selfmod.go`
 
 **Implementation steps**
 
-1. Define a protected set of core runtime files by explicit path list for the execution loop, task scheduler, branch/journal recovery, and memory persistence code, and keep that manifest under test.
-2. Require diff preview logging, clean rollback behavior, and passing build/test validation before committing self-edits.
-3. Add a two-step apply path for protected files so candidate changes are validated before replacing the active implementation.
-4. Record self-edit attempts and outcomes in structured logs and run summaries.
-5. Add targeted tests for rollback and validation behavior when protected-file edits fail.
+1. [x] Define a protected set of core runtime files by explicit path list for the execution loop, task scheduler, branch/journal recovery, and memory persistence code, and keep that manifest under test.
+2. [x] Require diff preview logging, clean rollback behavior, and passing build/test validation before committing self-edits.
+3. [x] Add a two-step apply path for protected files so candidate changes are validated before replacing the active implementation.
+4. [x] Record self-edit attempts and outcomes in structured logs and run summaries.
+5. [x] Add targeted tests for rollback and validation behavior when protected-file edits fail.
 
 **Definition of done**
 
