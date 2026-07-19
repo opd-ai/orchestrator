@@ -336,19 +336,10 @@ func gatherFileContext(files []string) string {
 		}
 		b.WriteString("FILE: " + f + "\n")
 		if len(data) > maxBytesPerFile {
-			// First try to truncate the file content
-			if len(data) > maxBytesPerFile {
-				// Truncate to maxBytesPerFile and add a marker
-				truncated := data[:maxBytesPerFile]
-				// Ensure we don't cut in the middle of a UTF-8 character
-				for i := len(truncated) - 1; i >= 0 && (truncated[i]&0xC0) == 0x80; i-- {
-					truncated = truncated[:i]
-				}
-				b.Write(truncated)
-				b.WriteString("\n// ... (truncated due to size limit)\n")
-			} else {
-				b.Write(extractSignatures(data))
-			}
+			// For oversized files, extract signatures only to stay within
+			// the per-file budget while preserving the callable surface.
+			b.Write(extractSignatures(data))
+			b.WriteString("\n// ... (signatures only, file truncated due to size limit)\n")
 		} else {
 			b.Write(data)
 		}

@@ -110,11 +110,11 @@ All file references below are relative to the repository root.
 
 **Implementation steps**
 
-1. Score candidate context files deterministically with explicit weights: keyword matches = 5, exact file-path matches from successful-edit history on the `memories` ref = 3, and git-tracked recency bucket = 1, with higher total score winning and lexical path order breaking ties.
-2. Enforce a per-file context cap before concatenating raw file contents.
-3. Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
-4. Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
-5. Add tests for file-ranking determinism, per-file truncation, and prompt-budget enforcement.
+1. [x] Score candidate context files deterministically with explicit weights: keyword matches = 5, exact file-path matches from successful-edit history on the `memories` ref = 3, and git-tracked recency bucket = 1, with higher total score winning and lexical path order breaking ties.
+2. [x] Enforce a per-file context cap before concatenating raw file contents.
+3. [x] Add a signature-only fallback for oversized files so interfaces survive even when bodies are truncated.
+4. [x] Preserve total prompt limits using character-budget enforcement aligned with the existing budget logic.
+5. [x] Add tests for file-ranking determinism, per-file truncation, and prompt-budget enforcement.
 
 **Definition of done**
 

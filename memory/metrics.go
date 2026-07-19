@@ -12,12 +12,31 @@ import (
 
 const topTrackedPatterns = 3
 
+// metricsFilePerm is the file permission for metrics files.
+const metricsFilePerm = 0o644
+
+// validateMetrics performs basic structural validation on AdaptiveMetrics.
+// It ensures the JSON can be unmarshaled and contains expected fields.
+func validateMetrics(data []byte) error {
+	var m AdaptiveMetrics
+	if err := json.Unmarshal(data, &m); err != nil {
+		return fmt.Errorf("metrics validation failed: %w", err)
+	}
+	// Additional sanity checks can be added here if needed.
+	// For example, we could verify TotalRuns is non-negative, etc.
+	return nil
+}
+
 // LoadMetrics reads adaptive metrics from the working tree metrics file when it exists.
+// It validates the loaded data before returning.
 func LoadMetrics() (AdaptiveMetrics, error) {
 	var m AdaptiveMetrics
 	data, err := os.ReadFile(MetricsFile)
 	if err != nil {
 		return m, nil
+	}
+	if err := validateMetrics(data); err != nil {
+		return m, err
 	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return m, fmt.Errorf("metrics decode: %w", err)
@@ -28,10 +47,14 @@ func LoadMetrics() (AdaptiveMetrics, error) {
 // LoadMetricsFromBranch reads AdaptiveMetrics directly from the memories
 // branch using "git show", without requiring a branch checkout.
 // Falls back to LoadMetrics when the branch or file does not yet exist.
+// It validates the loaded data before returning.
 func LoadMetricsFromBranch() (AdaptiveMetrics, error) {
 	out, err := exec.Command("git", "show", MemoryBranch+":"+MetricsFile).Output()
 	if err != nil {
 		return LoadMetrics()
+	}
+	if err := validateMetrics(out); err != nil {
+		return AdaptiveMetrics{}, err
 	}
 	var m AdaptiveMetrics
 	if err := json.Unmarshal(out, &m); err != nil {
@@ -40,10 +63,24 @@ func LoadMetricsFromBranch() (AdaptiveMetrics, error) {
 	return m, nil
 }
 
-// SaveMetrics writes adaptive metrics to the working tree metrics file.
+// SaveMetrics writes adaptive metrics to the working tree metrics file atomically
+// using write-then-rename pattern to prevent partial writes.
 func SaveMetrics(updated AdaptiveMetrics) error {
-	data, _ := json.MarshalIndent(updated, "", "  ")
-	return os.WriteFile(MetricsFile, data, 0644)
+	data, err := json.MarshalIndent(updated, "", "  ")
+	if err != nil {
+		return fmt.Errorf("metrics encode: %w", err)
+	}
+
+	// Write to a temporary file first, then atomically rename.
+	tmpFile := MetricsFile + ".tmp"
+	if err := os.WriteFile(tmpFile, data, metricsFilePerm); err != nil {
+		return fmt.Errorf("write temp metrics: %w", err)
+	}
+	if err := os.Rename(tmpFile, MetricsFile); err != nil {
+		_ = os.Remove(tmpFile) // Best effort cleanup
+		return fmt.Errorf("rename temp metrics: %w", err)
+	}
+	return nil
 }
 
 // UpdateMetrics merges the latest run summary into persisted adaptive metrics on the memory branch.
@@ -60,8 +97,15 @@ func UpdateMetrics(summary RunSummary) error {
 		if err != nil {
 			return fmt.Errorf("metrics encode: %w", err)
 		}
-		if err := os.WriteFile(metricsPath, data, 0o644); err != nil {
-			return fmt.Errorf("write metrics: %w", err)
+
+		// Write atomically using write-then-rename
+		tmpFile := metricsPath + ".tmp"
+		if err := os.WriteFile(tmpFile, data, metricsFilePerm); err != nil {
+			return fmt.Errorf("write temp metrics: %w", err)
+		}
+		if err := os.Rename(tmpFile, metricsPath); err != nil {
+			_ = os.Remove(tmpFile)
+			return fmt.Errorf("rename temp metrics: %w", err)
 		}
 
 		return commitWorktreeChanges(worktreePath, "memory: update adaptive metrics", true, MetricsFile)
@@ -77,6 +121,9 @@ func loadMetricsFromPath(path string) (AdaptiveMetrics, error) {
 		}
 		return m, fmt.Errorf("read metrics: %w", err)
 	}
+	if err := validateMetrics(data); err != nil {
+		return m, err
+	}
 	if err := json.Unmarshal(data, &m); err != nil {
 		return m, fmt.Errorf("metrics decode: %w", err)
 	}
@@ -87,21 +134,16 @@ func loadMetricsFromPath(path string) (AdaptiveMetrics, error) {
 func mergeSummaryMetrics(m AdaptiveMetrics, summary RunSummary) AdaptiveMetrics {
 	total := float64(m.TotalRuns)
 
-	m.AvgSuccessPatchSize =
-		((m.AvgSuccessPatchSize * total) +
-			float64(summary.LargestPatch)) / (total + 1)
-	m.AvgRetryCount =
-		((m.AvgRetryCount * total) +
-			summary.AvgRetries) / (total + 1)
-	m.AvgInferenceLatencyMs =
-		((m.AvgInferenceLatencyMs * total) +
-			summary.AvgInferenceLatencyMs) / (total + 1)
-	m.AvgPatchConfidence =
-		((m.AvgPatchConfidence * total) +
-			summary.AvgPatchConfidence) / (total + 1)
-	m.AvgPatchRisk =
-		((m.AvgPatchRisk * total) +
-			summary.AvgPatchRisk) / (total + 1)
+	m.AvgSuccessPatchSize = ((m.AvgSuccessPatchSize * total) +
+		float64(summary.LargestPatch)) / (total + 1)
+	m.AvgRetryCount = ((m.AvgRetryCount * total) +
+		summary.AvgRetries) / (total + 1)
+	m.AvgInferenceLatencyMs = ((m.AvgInferenceLatencyMs * total) +
+		summary.AvgInferenceLatencyMs) / (total + 1)
+	m.AvgPatchConfidence = ((m.AvgPatchConfidence * total) +
+		summary.AvgPatchConfidence) / (total + 1)
+	m.AvgPatchRisk = ((m.AvgPatchRisk * total) +
+		summary.AvgPatchRisk) / (total + 1)
 	if summary.MostModifiedFile != "" {
 		m.MostProblematicFile = summary.MostModifiedFile
 	}

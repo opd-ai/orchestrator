@@ -16,8 +16,10 @@ import (
 // maxArtifactsPerDir is the maximum number of files retained in each
 // observability artifact directory. When a new artifact is written, any files
 // beyond this limit are removed in lexical (oldest-first) order.
-const maxArtifactsPerDir = 50
-const artifactTimestampFormat = "20060102T150405.000000000Z"
+const (
+	maxArtifactsPerDir      = 50
+	artifactTimestampFormat = "20060102T150405.000000000Z"
+)
 
 // buildFailureArtifact is the structured JSON envelope written to
 // logs/build_failures/<task_id>.json for each build failure.

@@ -118,12 +118,12 @@ func TestWriteRunSummaryIncludesBlockedReasons(t *testing.T) {
 	})
 
 	writeRunSummary(memory.RunSummary{
-		TasksTotal:             3,
-		TasksCompleted:         2,
-		TasksBlocked:           1,
-		DurationSeconds:        12,
-		Branch:                 "autonomous/test",
-		RetryConvergenceAlerts: 1,
+		TasksTotal:              3,
+		TasksCompleted:          2,
+		TasksBlocked:            1,
+		DurationSeconds:         12,
+		Branch:                  "autonomous/test",
+		RetryConvergenceAlerts:  1,
 		RetryConvergenceSamples: 2,
 		BlockedTaskReasons: map[string]int{
 			"patch_rejected":       1,

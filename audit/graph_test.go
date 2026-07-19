@@ -52,8 +52,8 @@ func TestDetectCycles_NoCycle(t *testing.T) {
 
 func TestCheckLayering_Violation(t *testing.T) {
 	pkgs := map[string]*PackageInfo{
-		"cmd":  {Path: "cmd", Imports: []string{"lib"}},
-		"lib":  {Path: "lib", Imports: []string{"cmd"}}, // lib imports cmd: layering violation
+		"cmd": {Path: "cmd", Imports: []string{"lib"}},
+		"lib": {Path: "lib", Imports: []string{"cmd"}}, // lib imports cmd: layering violation
 	}
 	g := BuildDependencyGraph(pkgs)
 	layers := [][]string{{"cmd"}, {"lib"}}

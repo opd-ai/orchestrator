@@ -119,4 +119,3 @@ func executeInReviewMode(task *Task, stats *executionStats) string {
 func deescalateReviewMode() {
 	isStrategicReviewActive = false
 }
-

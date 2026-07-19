@@ -50,7 +50,8 @@ func memoryBranchExists() bool {
 }
 
 func commitWorktreeChanges(worktreePath, message string, allowNoChange bool, paths ...string) error {
-	addArgs := []string{"-C", worktreePath, "add", "--"}
+	// Use -f to force-add files that might be ignored by global .gitignore
+	addArgs := []string{"-C", worktreePath, "add", "-f", "--"}
 	addArgs = append(addArgs, paths...)
 	if err := exec.Command("git", addArgs...).Run(); err != nil {
 		return fmt.Errorf("git add: %w", err)

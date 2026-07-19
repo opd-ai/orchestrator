@@ -352,7 +352,7 @@ func TestGatherFileContextTruncation(t *testing.T) {
 	}
 
 	// Write test content to file
-	err := os.WriteFile(testFile, testContent, 0644)
+	err := os.WriteFile(testFile, testContent, 0o644)
 	if err != nil {
 		t.Fatalf("Failed to create test file: %v", err)
 	}
@@ -361,9 +361,9 @@ func TestGatherFileContextTruncation(t *testing.T) {
 	// Test gatherFileContext with truncation
 	context := gatherFileContext([]string{testFile})
 
-	// Should contain truncated content
-	if !strings.Contains(context, "// ... (truncated due to size limit)") {
-		t.Error("Expected truncated content marker")
+	// Should contain signature-only fallback marker
+	if !strings.Contains(context, "// ... (signatures only, file truncated due to size limit)") {
+		t.Error("Expected signature-only fallback marker")
 	}
 
 	// Should not exceed maxPromptChars

@@ -28,7 +28,7 @@ func (c *Config) Validate() bool {
 func writeTempFile(t *testing.T, dir, name, content string) string {
 	t.Helper()
 	path := filepath.Join(dir, name)
-	if err := os.WriteFile(path, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatalf("write temp file: %v", err)
 	}
 	return path
@@ -130,6 +130,8 @@ func TestAnalyzeFiles_SkipsParseErrors(t *testing.T) {
 }
 
 // Verify the fset and ast imports are used (compile-time check via blank usage).
-var _ = token.NewFileSet
-var _ = parser.ParseFile
-var _ = ast.File{}
+var (
+	_ = token.NewFileSet
+	_ = parser.ParseFile
+	_ = ast.File{}
+)
