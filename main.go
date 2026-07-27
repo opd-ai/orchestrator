@@ -104,6 +104,7 @@ func ensureTasksFile() {
 			t.ID = fmt.Sprintf("%s%d", doc.Prefix, i+1)
 			t.Status = "pending"
 			t.Hash = hash
+			t.Source = strings.TrimSuffix(doc.Name, filepath.Ext(doc.Name))
 			if len(t.Files) == 0 {
 				t.Files = extractMentionedGoFiles(t.Description)
 			}
@@ -159,7 +160,6 @@ func mergeAuditFindings(allTasks []Task, seen map[string]bool) []Task {
 		return allTasks
 	}
 
-	nextID := nextTaskIDIndex(allTasks, "A")
 	for _, finding := range findings {
 		severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
 		if severity != "HIGH" && severity != "CRITICAL" {
@@ -171,13 +171,18 @@ func mergeAuditFindings(allTasks []Task, seen map[string]bool) []Task {
 			continue
 		}
 		seen[hash] = true
-		allTasks = append(allTasks, Task{
-			ID:          fmt.Sprintf("A%d", nextID),
+		task := Task{
+			ID:          fmt.Sprintf("A%s", hash),
 			Description: desc,
 			Status:      "pending",
 			Hash:        hash,
-		})
-		nextID++
+			Source:      "audit",
+		}
+		if len(task.Files) == 0 {
+			task.Files = extractMentionedGoFiles(task.Description)
+		}
+		allTasks = append(allTasks, task)
+		logInfo("audit_task_generated", task.ID, fmt.Sprintf("severity=%s description=%s", severity, finding.Description))
 	}
 	return allTasks
 }

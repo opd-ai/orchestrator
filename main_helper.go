@@ -69,6 +69,7 @@ type Task struct {
 	Hash        string     `json:"hash"`
 	ChangeType  ChangeType `json:"change_type,omitempty"`
 	MergedCount int        `json:"merged_count,omitempty"`
+	Source      string     `json:"source,omitempty"`
 }
 
 type TaskFile struct {
