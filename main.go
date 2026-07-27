@@ -160,6 +160,11 @@ func mergeAuditFindings(allTasks []Task, seen map[string]bool) []Task {
 		return allTasks
 	}
 
+	// Initialize seen map with existing task hashes to prevent duplicates
+	for _, task := range allTasks {
+		seen[task.Hash] = true
+	}
+
 	for _, finding := range findings {
 		severity := strings.ToUpper(strings.TrimSpace(finding.Severity))
 		if severity != "HIGH" && severity != "CRITICAL" {

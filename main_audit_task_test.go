@@ -127,7 +127,7 @@ func TestMergeAuditFindings_DeduplicationAndPriority(t *testing.T) {
 				},
 			},
 			existingTasks: []Task{
-				{ID: "O1", Description: "[AUDIT-HIGH] Some architecture issue", Status: "pending", Source: "goals"},
+				{ID: "O1", Description: "[AUDIT-HIGH] Some architecture issue", Status: "pending", Source: "goals", Hash: hashString("[AUDIT-HIGH] Some architecture issue")},
 			},
 			expectedCount: 1,              // deduplicated by hash
 			expectedIDs:   []string{"O1"}, // existing task keeps its ID
@@ -172,14 +172,14 @@ func TestMergeAuditFindings_DeduplicationAndPriority(t *testing.T) {
 			}
 
 			// Additional checks for audit tasks: source and priority
-			for _, task := range result {
-				if task.Source == "audit" {
+			for _, tsk := range result {
+				if tsk.Source == "audit" {
 					// Ensure audit tasks have the correct source
-					if task.Source != "audit" {
-						t.Fatalf("audit task should have source 'audit', got %s", task.Source)
+					if tsk.Source != "audit" {
+						t.Fatalf("audit task should have source 'audit', got %s", tsk.Source)
 					}
 					// Ensure audit tasks have high or critical priority (0 or 1)
-					p := taskPriority(&task)
+					p := taskPriority(&tsk)
 					if p > taskPriorityHigh {
 						t.Fatalf("audit task should have priority high or critical (0 or 1), got %d", p)
 					}
